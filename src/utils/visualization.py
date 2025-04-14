@@ -12,8 +12,6 @@ DQN 優先經驗回放的可視化工具。
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-import seaborn as sns
-import pandas as pd
 from datetime import datetime
 import config
 
@@ -24,47 +22,42 @@ def setup_plotting_style():
     
     設置所有可視化的一致繪圖風格。
     """
-    # Use seaborn style for better aesthetics
-    sns.set(style="darkgrid")
-    plt.rcParams['figure.figsize'] = (12, 8)
-    plt.rcParams['axes.titlesize'] = 16
-    plt.rcParams['axes.labelsize'] = 14
-    plt.rcParams['xtick.labelsize'] = 12
-    plt.rcParams['ytick.labelsize'] = 12
-    plt.rcParams['legend.fontsize'] = 12
+    # Use a simple clean style without background color
+    plt.style.use('classic')
+    plt.rcParams['figure.figsize'] = (12, 10)
+    plt.rcParams['axes.titlesize'] = 14
+    plt.rcParams['axes.labelsize'] = 12
+    plt.rcParams['xtick.labelsize'] = 10
+    plt.rcParams['ytick.labelsize'] = 10
+    plt.rcParams['legend.fontsize'] = 10
 
 
-def plot_training_metrics(episode_rewards, episode_lengths, losses=None, smoothing=0.9, save_path=None):
+def create_combined_plot(stats, smoothing=0.9, save_path=None):
     """
-    Plot training metrics including rewards, episode lengths, and losses.
+    Create a 4-panel combined plot showing all important metrics in one figure.
     
     Args:
-        episode_rewards (list): List of episode rewards
-        episode_lengths (list): List of episode lengths (steps per episode)
-        losses (list, optional): List of loss values during training
+        stats (dict): Dictionary containing training statistics
         smoothing (float): Smoothing factor for the plots (0-1)
         save_path (str, optional): Path to save the plot image
-    
-    繪製包括獎勵、回合長度和損失在內的訓練指標。
+        
+    創建一個4面板組合圖，在一個圖中顯示所有重要指標。
     
     參數：
-        episode_rewards (list)：回合獎勵列表
-        episode_lengths (list)：回合長度列表（每回合步數）
-        losses (list, optional)：訓練期間的損失值列表
+        stats (dict)：包含訓練統計數據的字典
         smoothing (float)：繪圖的平滑因子（0-1）
         save_path (str, optional)：保存繪圖圖像的路徑
     """
     setup_plotting_style()
     
-    # Create figure with appropriate subplots
-    n_plots = 3 if losses is not None else 2
-    fig, axes = plt.subplots(n_plots, 1, figsize=(12, 4*n_plots), sharex=True)
+    # Create a figure with 2x2 subplots
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     
-    # Calculate smoothed values
+    # Smoothing function for data series
     def smooth(data, alpha=smoothing):
         """Apply exponential smoothing to data series"""
         smoothed = []
-        if not data:
+        if not data or len(data) == 0:
             return smoothed
         value = data[0]
         for point in data:
@@ -72,173 +65,138 @@ def plot_training_metrics(episode_rewards, episode_lengths, losses=None, smoothi
             smoothed.append(value)
         return smoothed
     
-    # Plot episode rewards
-    ax = axes[0]
-    episodes = list(range(1, len(episode_rewards) + 1))
-    ax.plot(episodes, episode_rewards, alpha=0.3, label='Raw')
-    if len(episode_rewards) >= 2:  # Need at least 2 points for smoothing
-        ax.plot(episodes, smooth(episode_rewards), label=f'Smoothed (α={smoothing})',
-                linewidth=2)
+    # 1. Episode Rewards Plot (Top Left)
+    ax = axes[0, 0]
+    has_labels = False
+    if 'episode_rewards' in stats and len(stats['episode_rewards']) > 0:
+        episode_rewards = stats['episode_rewards']
+        episodes = list(range(1, len(episode_rewards) + 1))
+        ax.plot(episodes, episode_rewards, alpha=0.3, color='blue', label='Raw')
+        has_labels = True
+        if len(episode_rewards) >= 2:
+            ax.plot(episodes, smooth(episode_rewards), color='darkblue',
+                    linewidth=2, label=f'Smoothed (α={smoothing})')
+    ax.set_xlabel('Episodes')
     ax.set_ylabel('Reward')
-    ax.set_title('Training Rewards per Episode')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    # Plot episode lengths
-    ax = axes[1]
-    ax.plot(episodes, episode_lengths, alpha=0.3, label='Raw')
-    if len(episode_lengths) >= 2:
-        ax.plot(episodes, smooth(episode_lengths), label=f'Smoothed (α={smoothing})',
-                linewidth=2)
-    ax.set_ylabel('Steps')
-    ax.set_title('Episode Length (Steps)')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-    
-    # Plot losses if provided
-    if losses is not None:
-        ax = axes[2]
-        loss_steps = list(range(1, len(losses) + 1))
-        ax.plot(loss_steps, losses, alpha=0.3, label='Raw')
-        if len(losses) >= 2:
-            ax.plot(loss_steps, smooth(losses), label=f'Smoothed (α={smoothing})',
-                    linewidth=2)
-        ax.set_ylabel('Loss')
-        ax.set_title('Training Loss')
+    ax.set_title('Training Rewards')
+    if has_labels:  # Only add legend if we have labeled plots
         ax.legend()
-        ax.grid(True, alpha=0.3)
+    ax.grid(True, alpha=0.3)
     
-    # Final x-axis label
-    axes[-1].set_xlabel('Episodes')
+    # 2. Episode Length Plot (Top Right)
+    ax = axes[0, 1]
+    has_labels = False
+    if 'episode_lengths' in stats and len(stats['episode_lengths']) > 0:
+        episode_lengths = stats['episode_lengths']
+        episodes = list(range(1, len(episode_lengths) + 1))
+        ax.plot(episodes, episode_lengths, alpha=0.3, color='green', label='Raw')
+        has_labels = True
+        if len(episode_lengths) >= 2:
+            ax.plot(episodes, smooth(episode_lengths), color='darkgreen',
+                    linewidth=2, label=f'Smoothed (α={smoothing})')
+    ax.set_xlabel('Episodes')
+    ax.set_ylabel('Steps')
+    ax.set_title('Episode Length')
+    if has_labels:  # Only add legend if we have labeled plots
+        ax.legend()
+    ax.grid(True, alpha=0.3)
     
-    # Adjust layout and display
-    plt.tight_layout()
+    # 3. Loss Plot (Bottom Left)
+    ax = axes[1, 0]
+    has_labels = False
+    if 'losses' in stats and len(stats['losses']) > 0:
+        losses = stats['losses']
+        steps = list(range(1, len(losses) + 1))
+        ax.plot(steps, losses, alpha=0.3, color='red', label='Raw')
+        has_labels = True
+        if len(losses) >= 2:
+            ax.plot(steps, smooth(losses), color='darkred',
+                    linewidth=2, label=f'Smoothed (α={smoothing})')
+    ax.set_xlabel('Training Steps')
+    ax.set_ylabel('Loss')
+    ax.set_title('Training Loss')
+    if has_labels:  # Only add legend if we have labeled plots
+        ax.legend()
+    ax.grid(True, alpha=0.3)
     
-    # Save if path is specified
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    # 4. Priority Distribution / Comparative Plot (Bottom Right)
+    ax = axes[1, 1]
+    has_labels = False
     
-    plt.show()
-
-
-def plot_priority_distribution(priorities, save_path=None):
-    """
-    Plot the distribution of priorities in the replay buffer.
-    
-    Args:
-        priorities (numpy.ndarray): Array of priorities from the replay buffer
-        save_path (str, optional): Path to save the plot image
+    if 'priorities' in stats and len(stats['priorities']) > 0:
+        # Plot priority distribution as a histogram
+        priorities = np.array(stats['priorities'])
+        if len(priorities) > 0:
+            # Use simple histogram without KDE
+            ax.hist(priorities, bins=30, alpha=0.7, color='purple', density=True)
+            
+            # Add mean and median lines
+            mean_priority = np.mean(priorities)
+            median_priority = np.median(priorities)
+            ax.axvline(mean_priority, color='red', linestyle='--', label=f'Mean: {mean_priority:.4f}')
+            ax.axvline(median_priority, color='green', linestyle='--', label=f'Median: {median_priority:.4f}')
+            has_labels = True
+            
+        ax.set_xlabel('Priority Value')
+        ax.set_ylabel('Density')
+        ax.set_title('Priority Distribution')
+    elif all(key in stats for key in ['uniform_rewards', 'per_rewards']):
+        # Alternative: Plot comparative rewards if available
+        uniform_rewards = stats['uniform_rewards']
+        per_rewards = stats['per_rewards']
         
-    繪製回放緩衝區中優先級的分佈。
-    
-    參數：
-        priorities (numpy.ndarray)：來自回放緩衝區的優先級數組
-        save_path (str, optional)：保存繪圖圖像的路徑
-    """
-    setup_plotting_style()
-    
-    plt.figure(figsize=(10, 6))
-    
-    # Plot priority distribution as a histogram
-    sns.histplot(priorities, bins=50, kde=True)
-    plt.title('Priority Distribution in Replay Buffer')
-    plt.xlabel('Priority Value')
-    plt.ylabel('Frequency')
-    plt.grid(True, alpha=0.3)
-    
-    # Add statistics
-    if len(priorities) > 0:
-        plt.axvline(np.mean(priorities), color='r', linestyle='--', label=f'Mean: {np.mean(priorities):.4f}')
-        plt.axvline(np.median(priorities), color='g', linestyle='--', label=f'Median: {np.median(priorities):.4f}')
-        plt.legend()
-    
-    plt.tight_layout()
-    
-    # Save if path is specified
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    
-    plt.show()
-
-
-def plot_comparative_rewards(uniform_rewards, per_rewards, smoothing=0.9, save_path=None):
-    """
-    Plot comparative results between uniform sampling and prioritized experience replay.
-    
-    Args:
-        uniform_rewards (list): List of episode rewards using uniform sampling
-        per_rewards (list): List of episode rewards using prioritized experience replay
-        smoothing (float): Smoothing factor for the plots (0-1)
-        save_path (str, optional): Path to save the plot image
+        if uniform_rewards:
+            uniform_episodes = list(range(1, len(uniform_rewards) + 1))
+            ax.plot(uniform_episodes, smooth(uniform_rewards), 
+                     label='Uniform Sampling', color='blue', linewidth=2)
+            has_labels = True
         
-    繪製均勻採樣和優先經驗回放之間的比較結果。
+        if per_rewards:
+            per_episodes = list(range(1, len(per_rewards) + 1))
+            ax.plot(per_episodes, smooth(per_rewards), 
+                     label='PER', color='red', linewidth=2)
+            has_labels = True
+            
+        ax.set_xlabel('Episodes')
+        ax.set_ylabel('Smoothed Reward')
+        ax.set_title('Uniform vs. PER Rewards')
+    else:
+        # If neither priorities nor comparative rewards available
+        ax.text(0.5, 0.5, "No priority or comparative data available", 
+                horizontalalignment='center', verticalalignment='center')
+        ax.set_title('No Data Available')
     
-    參數：
-        uniform_rewards (list)：使用均勻採樣的回合獎勵列表
-        per_rewards (list)：使用優先經驗回放的回合獎勵列表
-        smoothing (float)：繪圖的平滑因子（0-1）
-        save_path (str, optional)：保存繪圖圖像的路徑
-    """
-    setup_plotting_style()
+    if has_labels:  # Only add legend if we have labeled plots
+        ax.legend()
+    ax.grid(True, alpha=0.3)
     
-    # Apply smoothing
-    def smooth(data, alpha=smoothing):
-        """Apply exponential smoothing to data series"""
-        smoothed = []
-        if not data:
-            return smoothed
-        value = data[0]
-        for point in data:
-            value = alpha * value + (1 - alpha) * point
-            smoothed.append(value)
-        return smoothed
+    # Add overall title
+    fig.suptitle('DQN with PER Training Metrics', fontsize=16)
     
-    plt.figure(figsize=(12, 6))
-    
-    # Plot both reward curves
-    max_len = max(len(uniform_rewards), len(per_rewards))
-    
-    if uniform_rewards:
-        uniform_episodes = list(range(1, len(uniform_rewards) + 1))
-        plt.plot(uniform_episodes, smooth(uniform_rewards), 
-                 label='Uniform Sampling', color='blue', linewidth=2)
-    
-    if per_rewards:
-        per_episodes = list(range(1, len(per_rewards) + 1))
-        plt.plot(per_episodes, smooth(per_rewards), 
-                 label='Prioritized Experience Replay', color='red', linewidth=2)
-    
-    plt.title('Training Rewards: Uniform Sampling vs. Prioritized Experience Replay')
-    plt.xlabel('Episode')
-    plt.ylabel('Smoothed Reward')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    
-    # Set consistent x-axis limits
-    plt.xlim(1, max_len)
-    
+    # Adjust layout
     plt.tight_layout()
+    plt.subplots_adjust(top=0.92)  # Make room for the overall title
     
     # Save if path is specified
     if save_path:
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
     
-    plt.show()
+    plt.close(fig)
+    
+    return fig
 
 
 def save_training_plots(stats, run_name=None, output_dir=None):
     """
-    Generate and save all training plots at once.
+    Generate and save combined training plot.
     
     Args:
         stats (dict): Dictionary containing training statistics
         run_name (str, optional): Name for this training run
         output_dir (str, optional): Directory to save plots
         
-    一次性生成並保存所有訓練繪圖。
+    生成並保存組合訓練圖。
     
     參數：
         stats (dict)：包含訓練統計數據的字典
@@ -247,7 +205,7 @@ def save_training_plots(stats, run_name=None, output_dir=None):
     """
     # Set up output directory
     if output_dir is None:
-        output_dir = config.RESULT_DIR  # Fixed: Use RESULT_DIR instead of RESULTS_DIR
+        output_dir = config.RESULT_DIR
     
     if run_name is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -257,30 +215,9 @@ def save_training_plots(stats, run_name=None, output_dir=None):
     results_dir = os.path.join(output_dir, run_name)
     os.makedirs(results_dir, exist_ok=True)
     
-    # Plot and save training metrics
-    if all(key in stats for key in ['episode_rewards', 'episode_lengths']):
-        losses = stats.get('losses', None)
-        plot_training_metrics(
-            stats['episode_rewards'], 
-            stats['episode_lengths'], 
-            losses=losses,
-            save_path=os.path.join(results_dir, 'training_metrics.png')
-        )
+    # Create and save combined plot
+    save_path = os.path.join(results_dir, 'training_metrics_combined.png')
+    create_combined_plot(stats, save_path=save_path)
     
-    # Plot and save priority distribution if available
-    if 'priorities' in stats:
-        plot_priority_distribution(
-            stats['priorities'],
-            save_path=os.path.join(results_dir, 'priority_distribution.png')
-        )
-    
-    # Plot and save comparative results if available
-    if all(key in stats for key in ['uniform_rewards', 'per_rewards']):
-        plot_comparative_rewards(
-            stats['uniform_rewards'],
-            stats['per_rewards'],
-            save_path=os.path.join(results_dir, 'comparative_rewards.png')
-        )
-    
-    print(f"All plots saved to {results_dir}")
+    print(f"Combined plot saved to {save_path}")
     return results_dir

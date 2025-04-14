@@ -1,14 +1,23 @@
 """
-Utility module for DQN with Prioritized Experience Replay.
+Utility modules for DQN with Prioritized Experience Replay.
 
-This module contains helper functions and utilities for training, evaluation,
-visualization, and device management.
+This package contains utility functions and classes for device detection,
+visualization, logging, and other helper functionalities.
 
-DQN 優先經驗回放的工具模組。
+DQN 優先經驗回放的實用工具模組。
 
-這個模組包含用於訓練、評估、視覺化和設備管理的輔助函數和工具。
+此包含用於設備檢測、可視化、日誌記錄和其他輔助功能的實用功能和類。
 """
 
-from src.utils.device_utils import get_device, get_system_info
-from src.utils.visualization import plot_training_metrics, plot_priority_distribution, save_training_plots
+from src.utils.device_utils import get_device, get_system_info, get_gpu_memory_gb
+from src.utils.visualization import create_combined_plot, save_training_plots
 from src.utils.logger import Logger
+
+__all__ = [
+    'get_device',
+    'get_system_info',
+    'get_gpu_memory_gb',
+    'create_combined_plot',
+    'save_training_plots',
+    'Logger'
+]

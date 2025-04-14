@@ -493,7 +493,9 @@ def make_atari_env(env_name=config.ENV_NAME,
                   episode_life=True, 
                   use_pytorch_format=True,
                   gpu_acceleration=True,
-                  force_training_mode=None):
+                  force_training_mode=None,
+                  record_video=False,
+                  video_dir=None):
     """
     Create a wrapped Atari environment ready for DQN training.
     
@@ -512,6 +514,8 @@ def make_atari_env(env_name=config.ENV_NAME,
         use_pytorch_format (bool): Whether to convert observations to PyTorch format
         gpu_acceleration (bool): Whether to use GPU for frame processing if available
         force_training_mode (bool): Override config.TRAINING_MODE if provided
+        record_video (bool): Whether to record videos of gameplay
+        video_dir (str): Directory to save videos to
         
     Returns:
         gym.Env: A fully preprocessed and wrapped Atari environment
@@ -527,9 +531,28 @@ def make_atari_env(env_name=config.ENV_NAME,
                   "Set TRAINING_MODE=False in config.py if you want to see visualization.")
     else:
         effective_render_mode = render_mode
-        
-    # Create base environment with specified parameters
-    env = make_env(env_name, effective_render_mode, difficulty, mode)
+    
+    # Configure video recording if enabled
+    if record_video and video_dir:
+        try:
+            # Create environment with video recording wrapper
+            env = gym.make(
+                env_name,
+                render_mode=effective_render_mode,
+                difficulty=difficulty,
+                mode=mode,
+                video_folder=video_dir,
+                fps=config.VIDEO_FPS,
+                render_fps=config.VIDEO_FPS
+            )
+            print(f"Video recording enabled. Videos will be saved to {video_dir}")
+        except Exception as e:
+            print(f"Warning: Failed to enable video recording: {e}")
+            # Fallback to standard environment
+            env = make_env(env_name, effective_render_mode, difficulty, mode)
+    else:
+        # Create standard environment
+        env = make_env(env_name, effective_render_mode, difficulty, mode)
     
     # Apply appropriate wrappers in sequence
     env = NoopResetEnv(env, noop_max=config.NOOP_MAX)
@@ -562,7 +585,7 @@ def make_atari_env(env_name=config.ENV_NAME,
     return env
 
 if __name__ == "__main__":
-    import src.utils.utils as utils
+    import src.utils as utils
     
     # Print system information
     system_info = utils.get_system_info()

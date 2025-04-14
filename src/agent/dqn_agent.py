@@ -35,6 +35,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import random
+import os
 from config import (
     LEARNING_RATE, GAMMA, BATCH_SIZE, EPSILON_START, EPSILON_END, 
     EPSILON_DECAY, TARGET_UPDATE_FREQUENCY, GRAD_CLIP_NORM, USE_PER, EPSILON_PER,
@@ -260,24 +261,35 @@ class DQNAgent:
         # Fix: Ensure this returns True exactly when steps_done is a multiple of TARGET_UPDATE_FREQUENCY
         return self.steps_done > 0 and self.steps_done % TARGET_UPDATE_FREQUENCY == 0
     
-    def save(self, path):
+    def save(self, path, additional_data=None):
         """
-        Save the agent's state (policy network, target network, optimizer).
+        Save the agent's state (policy network, target network, optimizer) and optional training data.
         
         Args:
             path (str): Path to save the model
+            additional_data (dict, optional): Additional training statistics to save
             
-        保存智能體的狀態（策略網絡、目標網絡、優化器）。
+        保存智能體的狀態（策略網絡、目標網絡、優化器）和可選的訓練數據。
         
         參數：
             path (str)：保存模型的路徑
+            additional_data (dict, optional)：要保存的額外訓練統計數據
         """
-        torch.save({
+        # Create base data dictionary with model states
+        save_data = {
             'policy_net_state_dict': self.policy_net.state_dict(),
             'target_net_state_dict': self.target_net.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'steps_done': self.steps_done
-        }, path)
+        }
+        
+        # Add any additional data if provided
+        if additional_data is not None and isinstance(additional_data, dict):
+            save_data.update(additional_data)
+            
+        # Save with guaranteed directory creation
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        torch.save(save_data, path)
     
     def load(self, path):
         """
@@ -286,13 +298,14 @@ class DQNAgent:
         Args:
             path (str): Path to the saved model
             
-        從保存的文件中加載智能體的狀態。
-        
-        參數：
-            path (str)：保存的模型的路徑
+        Returns:
+            dict: Training statistics if available
         """
         checkpoint = torch.load(path, map_location=self.device)
         self.policy_net.load_state_dict(checkpoint['policy_net_state_dict'])
         self.target_net.load_state_dict(checkpoint['target_net_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         self.steps_done = checkpoint['steps_done']
+        
+        # Return the full checkpoint which may contain additional training stats
+        return checkpoint

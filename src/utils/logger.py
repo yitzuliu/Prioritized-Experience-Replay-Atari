@@ -123,9 +123,8 @@ class Logger:
         if episode % 10 == 0:
             elapsed = now - self.start_time
             avg_reward = np.mean(self.episode_rewards[-10:]) if self.episode_rewards else 0
-            print(f"Episode {episode} | Reward: {reward:.1f} | "
-                  f"Avg(10): {avg_reward:.1f} | Steps: {length} | "
-                  f"Epsilon: {epsilon:.4f} | Time: {elapsed:.0f}s")
+            print(f"Episode {episode} | Current Reward: {reward:.1f} | Current Steps: {length} | "
+                  f"Epsilon: {epsilon:.4f} | Last 10 Eps Avg Reward: {avg_reward:.1f} | Total Training Time: {elapsed:.0f}s")
     
     def log_evaluation(self, episode, rewards, lengths):
         """

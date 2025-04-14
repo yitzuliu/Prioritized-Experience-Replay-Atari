@@ -31,6 +31,7 @@ from config import (
 )
 from src.memory.sumtree import SumTree
 from src.utils.device_utils import get_device
+from src.utils.visualization import create_combined_plot, save_training_plots
 
 
 class PrioritizedReplayMemory:

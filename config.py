@@ -126,6 +126,12 @@ EVAL_FREQUENCY = 500  # How often to evaluate during training (training.py doesn
 # 記憶體優化
 MEMORY_IMPLEMENTATION = "optimized"  # Using memory-efficient implementation (使用記憶體高效的實現)
 
+# Video recording settings
+# 視頻記錄設置
+ENABLE_VIDEO_RECORDING = False  # Enable/disable video recording functionality (啟用/禁用視頻記錄功能)
+VIDEO_FPS = 30  # Frames per second for recorded videos (記錄視頻的每秒幀數)
+VIDEO_LENGTH_LIMIT = 3600  # Maximum video length in seconds (最大視頻長度，單位為秒)
+
 # Directory configurations
 # 目錄配置 - All directories now under 'result' folder
 RESULT_DIR = "result"  # Main result directory
@@ -134,4 +140,5 @@ MODEL_DIR = os.path.join(RESULT_DIR, "models")  # Models directory
 CHECKPOINT_DIR = os.path.join(RESULT_DIR, "checkpoints")  # Checkpoints directory
 PLOT_DIR = os.path.join(RESULT_DIR, "plots")  # Plots directory
 DATA_DIR = os.path.join(RESULT_DIR, "data")  # Data directory
+VIDEO_DIR = os.path.join(RESULT_DIR, "videos")  # Video recording directory
 

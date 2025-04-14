@@ -15,6 +15,10 @@ import numpy as np
 import torch
 import gymnasium as gym
 from datetime import datetime
+import time
+import sys
+import gc  # 添加垃圾回收模塊
+import psutil  # 用於記憶體監控
 
 import config
 from src.environment import make_atari_env
@@ -49,6 +53,10 @@ def parse_args():
                         help="Directory to save model checkpoints")
     parser.add_argument("--cpu", action="store_true",
                         help="Force using CPU even if GPU is available")
+    parser.add_argument("--resume", type=str, default=None,
+                        help="Path to checkpoint file to resume training from")
+    parser.add_argument("--start-episode", type=int, default=1,
+                        help="Episode to start from when resuming training")
     
     return parser.parse_args()
 
@@ -165,28 +173,74 @@ def train(args):
     
     # Initialize DQN agent
     agent = DQNAgent(device=device, use_per=args.use_per)
-    print(f"Agent initialized with {'PER' if args.use_per else 'uniform sampling'}")
-    
-    # Set up logger
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    experiment_name = f"dqn_{'per' if args.use_per else 'uniform'}_{timestamp}"
-    logger = Logger(log_dir=config.LOG_DIR, experiment_name=experiment_name)
     
     # Variables for training loop
     episode_count = 0
     total_steps = 0
     best_eval_reward = float('-inf')
     
+    # 修改：記憶體管理變數
+    last_memory_check = time.time()
+    memory_check_interval = 60  # 每60秒檢查一次記憶體使用情況
+    memory_threshold_percent = 80  # 當記憶體使用超過80%時進行清理
+    peak_memory_usage = 0
+    
+    # Resume training if checkpoint provided
+    if args.resume:
+        if os.path.isfile(args.resume):
+            print(f"Loading checkpoint from {args.resume}...")
+            checkpoint = agent.load(args.resume)
+            if isinstance(checkpoint, dict) and 'total_steps' in checkpoint:
+                total_steps = checkpoint['total_steps']
+                best_eval_reward = checkpoint.get('best_eval_reward', float('-inf'))
+                print(f"Resumed from step {total_steps} with best reward {best_eval_reward:.2f}")
+            else:
+                print("Loaded model weights only, no training statistics available")
+        else:
+            print(f"Warning: Checkpoint file {args.resume} not found. Starting training from scratch.")
+    else:
+        print("Starting new training run")
+    
+    # Set up logger
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    experiment_name = f"dqn_{'per' if args.use_per else 'uniform'}_{timestamp}"
+    if args.resume:
+        # If resuming, try to use the same experiment name to continue the logs
+        base_name = os.path.basename(args.resume).split('_ep')[0]
+        if base_name.startswith("dqn_"):
+            experiment_name = base_name
+            
+    logger = Logger(log_dir=config.LOG_DIR, experiment_name=experiment_name)
+    
     # Training loop - main algorithm
     print("\nStarting training...\n")
+    # Variables to track training progress
+    training_start_time = time.time()
+    progress_update_frequency = 10  # Update progress every 10 episodes
+
     try:
-        for episode in range(1, args.episodes + 1):
+        # Start from specified episode when resuming
+        start_episode = args.start_episode if args.resume else 1
+        
+        for episode in range(start_episode, args.episodes + 1):
             episode_count = episode
             state, _ = env.reset()
             episode_reward = 0
             episode_length = 0
             done = False
             truncated = False
+            
+            # Calculate and display overall progress percentage
+            progress_pct = (episode - start_episode) / (args.episodes - start_episode + 1) * 100
+            elapsed_time = time.time() - training_start_time
+            if episode == start_episode or episode % progress_update_frequency == 0:
+                est_total_time = elapsed_time / max(0.001, (episode - start_episode)) * (args.episodes - start_episode + 1)
+                est_remaining = max(0, est_total_time - elapsed_time)
+                hours, remainder = divmod(est_remaining, 3600)
+                minutes, seconds = divmod(remainder, 60)
+                print(f"\rOverall Progress: {progress_pct:.1f}% | Est. remaining: {int(hours)}h {int(minutes)}m {int(seconds)}s", 
+                      end="", flush=True)
+                print()  # 添加這一行使得進度和下一行Episode輸出分開
             
             # Episode loop
             while not (done or truncated):
@@ -223,6 +277,51 @@ def train(args):
                     priorities = agent.memory.tree.get_leaf_values()
                     logger.log_priorities(priorities)
             
+            # 修改：基於記憶體使用百分比的清理機制
+            current_time = time.time()
+            if current_time - last_memory_check > memory_check_interval:
+                # 獲取當前記憶體使用情況
+                process = psutil.Process(os.getpid())
+                current_memory = process.memory_info().rss / 1024 / 1024  # MB
+                
+                # 獲取系統總記憶體
+                system_memory = psutil.virtual_memory()
+                total_memory = system_memory.total / 1024 / 1024  # MB
+                
+                # 計算進程記憶體使用百分比
+                memory_percent = system_memory.percent
+                process_memory_percent = (current_memory / total_memory) * 100
+                
+                # 更新峰值記憶體使用
+                if current_memory > peak_memory_usage:
+                    peak_memory_usage = current_memory
+                
+                print(f"\nMemory check: Process using {current_memory:.1f}MB ({process_memory_percent:.1f}%), "
+                      f"System memory: {memory_percent:.1f}% used.")
+                
+                # 如果記憶體使用率超過閾值，執行清理
+                if memory_percent > memory_threshold_percent or process_memory_percent > memory_threshold_percent / 2:
+                    # 強制進行垃圾回收
+                    gc.collect()
+                    
+                    # 清空PyTorch的CUDA快取（如果使用）
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    
+                    # 清空MPS快取（如果在Apple Silicon上）
+                    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+                        # MPS沒有直接的清除函數，但可以釋放一些不使用的變數
+                        torch.mps.empty_cache()
+                    
+                    # 記錄記憶體情況
+                    post_cleanup_memory = process.memory_info().rss / 1024 / 1024  # MB
+                    memory_freed = max(0, current_memory - post_cleanup_memory)
+                    
+                    print(f"Memory cleanup performed: {memory_freed:.1f}MB freed. "
+                          f"Current usage: {post_cleanup_memory:.1f}MB, Peak: {peak_memory_usage:.1f}MB")
+                    
+                last_memory_check = current_time
+            
             # Log episode statistics
             # Get current epsilon from agent
             epsilon = max(config.EPSILON_END, config.EPSILON_START - 
@@ -255,25 +354,56 @@ def train(args):
                 save_training_plots(logger.get_stats(), run_name=experiment_name)
     
     except KeyboardInterrupt:
-        print("\nTraining interrupted by user")
-    
-    # Save final model
-    final_path = os.path.join(args.save_dir, f"{experiment_name}_final.pth")
-    agent.save(final_path)
-    print(f"Final model saved to {final_path}")
-    
-    # Save statistics and generate plots
-    logger.save_stats()
-    results_dir = save_training_plots(logger.get_stats(), run_name=experiment_name, output_dir=config.PLOT_DIR)
-    
-    print("\nTraining complete!")
-    print(f"Trained for {episode_count} episodes, {total_steps} total steps")
-    print(f"Best evaluation reward: {best_eval_reward:.2f}")
-    print(f"Results and plots saved to {results_dir}")
-    
-    # Clean up
-    env.close()
-    eval_env.close()
+        print("\n\nTraining interrupted by user. Saving final state...")
+    except Exception as e:
+        print(f"\n\nError occurred during training: {e}")
+        import traceback
+        traceback.print_exc()
+        print("Attempting to save current state before exiting...")
+    finally:
+        # 最終記憶體使用情況報告
+        if 'process' in locals():
+            final_memory = process.memory_info().rss / 1024 / 1024  # MB
+            print(f"\nFinal memory usage: {final_memory:.1f}MB, Peak: {peak_memory_usage:.1f}MB")
+        
+        # Always execute cleanup and save, even if an error occurs
+        print("\nSaving final model and statistics...")
+        
+        # Save final model
+        final_path = os.path.join(args.save_dir, f"{experiment_name}_final.pth")
+        try:
+            # Save with additional training statistics 
+            agent.save(final_path, {
+                'total_steps': total_steps,
+                'best_eval_reward': best_eval_reward,
+                'episode_count': episode_count
+            })
+            print(f"Final model saved to {final_path}")
+            
+            # Save statistics and generate plots
+            logger.save_stats()
+            results_dir = save_training_plots(logger.get_stats(), run_name=experiment_name, output_dir=config.PLOT_DIR)
+            
+            print("\nTraining summary:")
+            print(f"Trained for {episode_count} episodes, {total_steps} total steps")
+            if best_eval_reward > float('-inf'):
+                print(f"Best evaluation reward: {best_eval_reward:.2f}")
+            else:
+                print("No evaluation was performed during this run")
+            print(f"Results and plots saved to {results_dir}")
+        except Exception as e:
+            print(f"Error during final saving: {e}")
+            print("Training data may be incomplete.")
+        
+        # Clean up
+        try:
+            env.close()
+            eval_env.close()
+        except:
+            pass
+            
+        # Force flush stdout to ensure all messages are displayed
+        sys.stdout.flush()
 
 
 if __name__ == "__main__":

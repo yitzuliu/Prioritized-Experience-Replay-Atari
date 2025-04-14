@@ -44,6 +44,8 @@ def parse_args():
                         help="Random seed")
     parser.add_argument("--slow", action="store_true",
                         help="Slow down rendering for better visualization")
+    parser.add_argument("--record", action="store_true",
+                        help="Record video of the agent playing (overrides config setting)")
     parser.add_argument("--cpu", action="store_true",
                         help="Force using CPU even if GPU is available")
     
@@ -87,9 +89,20 @@ def evaluate(args):
     else:
         device = get_device()
     
-    # Create environment (removed video recording functionality)
+    # Determine if video recording should be enabled
+    should_record = args.record or config.ENABLE_VIDEO_RECORDING
+    if should_record:
+        print("Video recording enabled")
+        # Create video directory if it doesn't exist
+        os.makedirs(config.VIDEO_DIR, exist_ok=True)
+    
+    # Create environment with appropriate rendering/recording settings
     render_mode = "human" if args.render else None
-    env = make_atari_env(render_mode=render_mode)
+    env = make_atari_env(
+        render_mode=render_mode,
+        record_video=should_record,
+        video_dir=config.VIDEO_DIR if should_record else None
+    )
     
     # Initialize agent
     agent = DQNAgent(device=device)
@@ -110,6 +123,12 @@ def evaluate(args):
     # Evaluate for specified number of episodes
     print("\nStarting evaluation...")
     for episode in range(1, args.episodes + 1):
+        # If recording is enabled, set unique video path for this episode
+        if should_record:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            video_path = os.path.join(config.VIDEO_DIR, f"episode_{episode}_{timestamp}.mp4")
+            env.metadata['video_path'] = video_path
+        
         state, _ = env.reset()
         episode_reward = 0
         step_count = 0

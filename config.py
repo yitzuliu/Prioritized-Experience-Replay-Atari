@@ -142,3 +142,5 @@ PLOT_DIR = os.path.join(RESULT_DIR, "plots")  # Plots directory
 DATA_DIR = os.path.join(RESULT_DIR, "data")  # Data directory
 VIDEO_DIR = os.path.join(RESULT_DIR, "videos")  # Video recording directory
 
+memory_check_interval = 3600 # Check memory usage every 1 hour (每小時檢查一次記憶體使用情況)
+memory_threshold_percent = 80 # Set threshold to 80% (設置閾值為80%)

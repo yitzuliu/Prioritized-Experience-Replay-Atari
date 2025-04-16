@@ -181,8 +181,8 @@ def train(args):
     
     # 修改：記憶體管理變數
     last_memory_check = time.time()
-    memory_check_interval = 60  # 每60秒檢查一次記憶體使用情況
-    memory_threshold_percent = 80  # 當記憶體使用超過80%時進行清理
+    memory_check_interval = config.memory_check_interval  # 每60秒檢查一次記憶體使用情況
+    memory_threshold_percent = config.memory_threshold_percent  # 當記憶體使用超過80%時進行清理
     peak_memory_usage = 0
     
     # Resume training if checkpoint provided

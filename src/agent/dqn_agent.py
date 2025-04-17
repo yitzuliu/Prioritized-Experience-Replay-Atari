@@ -11,23 +11,52 @@ experience storage, and network training.
 它負責與環境交互、經驗存儲和網絡訓練。
 
 Pseudocode for DQN with PER:
+/* ALGORITHM: Deep Q-Network with Prioritized Experience Replay */
+
+/* INITIALIZATION PHASE */
 1. Initialize primary Q-network Q with random weights θ
+   - This network is used for action selection and updated through learning
+
 2. Initialize target Q-network Q' with weights θ' = θ
-3. Initialize Prioritized Experience Replay memory D
+   - This network provides stable Q-value targets for learning
+
+3. Initialize Prioritized Experience Replay memory D with SumTree data structure
+   - SumTree enables efficient O(log n) priority-based sampling
+
+/* TRAINING LOOP */
 4. For each episode:
-   a. Initialize state s_1
+   a. Initialize state s_1 from environment
+   
    b. For each time step t:
       i. Select action a_t using ε-greedy policy based on Q(s_t; θ)
+         - With probability ε: choose random action (exploration)
+         - Otherwise: choose a_t = argmax_a Q(s_t, a; θ) (exploitation)
+      
       ii. Execute action a_t, observe reward r_t and next state s_{t+1}
+      
       iii. Store transition (s_t, a_t, r_t, s_{t+1}, done) in D with max priority
+           - New experiences get maximum priority to ensure they're sampled at least once
+      
       iv. If enough samples in D:
-         - Sample batch of transitions (s_j, a_j, r_j, s_{j+1}, done_j) with priority
-         - Calculate importance sampling weights w_j
-         - Calculate TD-error δ_j = r_j + γ·max_a Q'(s_{j+1}, a; θ') - Q(s_j, a_j; θ)
-         - Update priorities in D using |δ_j|
+         /* LEARNING PHASE */
+         - Divide total priority sum into B segments for balanced sampling
+         - Sample batch of transitions with probability proportional to priority
+         - Calculate importance sampling weights w_j = (N·P(j))^(-β) to correct bias
+           where N is memory size, P(j) is sampling probability, and β controls correction strength
+         
+         - For each transition j:
+           * Compute target y_j = r_j                               (if done)
+                               = r_j + γ·max_a Q'(s_{j+1}, a; θ')  (otherwise)
+           * Compute TD-error δ_j = y_j - Q(s_j, a_j; θ)
+         
+         - Update priorities in D using |δ_j|^α + ε
+           where α determines how much prioritization is used and ε ensures non-zero probability
+         
          - Calculate loss L = 1/B · Σ w_j · (δ_j)²
          - Perform gradient descent step on L with respect to θ
+      
       v. Every C steps, update target network θ' ← θ
+         - This provides stability to the learning process
 """
 
 import numpy as np
@@ -77,16 +106,24 @@ class DQNAgent:
         self.device = device
         print(f"Using device: {device}")
         
-        # Initialize Q-Networks
+        # /* INITIALIZATION PHASE - Step 1 */
+        # Initialize primary Q-network Q with random weights θ
+        # This network is used for action selection and is updated through learning
         self.policy_net = DQN().to(device)  # Primary network for action selection
+        
+        # /* INITIALIZATION PHASE - Step 2 */
+        # Initialize target Q-network Q' with weights θ' = θ
+        # This network provides stable Q-value targets for learning
         self.target_net = DQN().to(device)  # Target network for stable learning
         self.target_net.load_state_dict(self.policy_net.state_dict())  # Copy initial weights
         self.target_net.eval()  # Target network is only used for inference
         
-        # Initialize optimizer
+        # Initialize optimizer for gradient descent steps
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=LEARNING_RATE)
         
-        # Replay memory
+        # /* INITIALIZATION PHASE - Step 3 */
+        # Initialize Prioritized Experience Replay memory with SumTree
+        # SumTree enables efficient O(log n) priority-based sampling
         self.use_per = use_per
         if use_per:
             print("Using Prioritized Experience Replay")
@@ -122,6 +159,9 @@ class DQNAgent:
         返回：
             int：選擇的動作
         """
+        # /* TRAINING LOOP - Step 4.b.i */
+        # Select action a_t using ε-greedy policy based on Q(s_t; θ)
+        
         # Calculate current epsilon
         if evaluate:
             # Use greedy policy for evaluation
@@ -139,7 +179,7 @@ class DQNAgent:
         
         # Epsilon-greedy action selection
         if random.random() > epsilon:
-            # Exploit: select best action
+            # Exploit: select best action (choose a_t = argmax_a Q(s_t, a; θ))
             with torch.no_grad():
                 # Forward pass through policy network
                 q_values = self.policy_net(state_tensor)
@@ -147,7 +187,7 @@ class DQNAgent:
                 # Select action with highest Q-value
                 action = q_values.max(1)[1].item()
         else:
-            # Explore: select random action
+            # Explore: select random action for exploration
             action = random.randrange(ACTION_SPACE_SIZE)
         
         return action
@@ -172,7 +212,9 @@ class DQNAgent:
             next_state (numpy.ndarray)：下一個狀態
             done (bool)：回合是否結束
         """
-        # Add the transition to memory
+        # /* TRAINING LOOP - Step 4.b.iii */
+        # Store transition (s_t, a_t, r_t, s_{t+1}, done) in D with max priority
+        # New experiences get maximum priority to ensure they're sampled at least once
         self.memory.add(state, action, reward, next_state, done)
     
     def update_target_network(self):
@@ -181,6 +223,9 @@ class DQNAgent:
         
         通過從策略網絡複製權重來更新目標網絡。
         """
+        # /* TRAINING LOOP - Step 4.b.v */
+        # Update target network θ' ← θ
+        # This provides stability to the learning process
         self.target_net.load_state_dict(self.policy_net.state_dict())
     
     def optimize_model(self):
@@ -195,54 +240,60 @@ class DQNAgent:
         返回：
             float：此批次的損失值
         """
+        # /* TRAINING LOOP - Step 4.b.iv */
+        # Learning Phase
+        
         # Check if memory has enough samples
         if len(self.memory) < BATCH_SIZE:
             return 0
         
-        # Sample a batch of transitions with priorities and importance weights
-        # If using standard memory, weights would be all 1s
+        # Divide total priority sum into B segments for balanced sampling
+        # Sample batch of transitions with probability proportional to priority
+        # Calculate importance sampling weights w_j = (N·P(j))^(-β) to correct bias
         batch, indices, weights = self.memory.sample(BATCH_SIZE)
         
         # Unpack the batch
         states, actions, rewards, next_states, dones = batch
         
-        # Compute current Q values: Q(s, a)
-        # We want to get Q values only for the actions that were taken
+        # Compute current Q values: Q(s_j, a_j; θ)
         current_q_values = self.policy_net(states).gather(1, actions.unsqueeze(1))
         
-        # Compute max Q values for next states using the target network: max_a Q'(s', a)
+        # Compute max Q values for next states using the target network: max_a Q'(s_{j+1}, a; θ')
         with torch.no_grad():
             next_q_values = self.target_net(next_states).max(1)[0]
         
         # Compute the expected (or target) Q values
-        # If done, target = reward, else target = reward + gamma * max_a Q'(s', a)
+        # Compute target y_j = r_j if done (terminal state)
+        #                     = r_j + γ·max_a Q'(s_{j+1}, a; θ') otherwise (non-terminal)
         expected_q_values = rewards + GAMMA * next_q_values * (1 - dones)
         
         # Reshape for loss calculation
         expected_q_values = expected_q_values.unsqueeze(1)
         
-        # Calculate TD errors for updating priorities in PER
+        # Compute TD-error δ_j = y_j - Q(s_j, a_j; θ)
+        # This is used for updating priorities in the memory
         td_errors = (expected_q_values - current_q_values).detach().cpu().numpy()
         
-        # If using PER, update priorities based on TD errors
+        # Update priorities in D using |TD-error|^α + ε
+        # where α determines how much prioritization is used
+        # and ε ensures non-zero probability
         if self.use_per:
-            # Update transition priorities
             self.memory.update_priorities(indices, np.abs(td_errors.flatten()) + EPSILON_PER)
         
-        # Calculate the weighted loss
-        # If using standard memory, weights would be all 1s
+        # Calculate the weighted loss L = 1/B · Σ w_j · (δ_j)²
+        # Importance sampling weights correct the bias introduced by prioritized sampling
         loss = (weights.unsqueeze(1) * F.smooth_l1_loss(
             current_q_values, expected_q_values, reduction='none'
         )).mean()
         
-        # Optimize the model
-        self.optimizer.zero_grad()
-        loss.backward()
+        # Perform gradient descent step on L with respect to θ
+        self.optimizer.zero_grad()  # Zero gradients from previous step
+        loss.backward()  # Compute gradients
         
         # Clip gradients to prevent exploding gradients
         torch.nn.utils.clip_grad_norm_(self.policy_net.parameters(), GRAD_CLIP_NORM)
         
-        # Apply gradients
+        # Apply gradients to update network parameters
         self.optimizer.step()
         
         # Store the loss for monitoring

@@ -9,6 +9,26 @@ DQN 優先經驗回放智能體的評估腳本。
 
 此腳本載入訓練好的 DQN 模型並評估其在 Atari 冰球遊戲上的表現，
 允許可視化智能體行為並收集性能指標。
+
+Pseudocode for DQN Evaluation:
+1. Load trained DQN model
+   - Initialize agent with appropriate device
+   - Load saved model weights
+
+2. Evaluation loop (for each episode):
+   a. Reset environment to initial state
+   
+   b. For each step in episode:
+      i. Select action using greedy policy (no exploration)
+      ii. Execute action, observe reward and next state
+      iii. Continue until episode ends or max steps reached
+   
+   c. Record episode statistics (reward, steps, duration)
+
+3. Generate evaluation summary
+   - Calculate average rewards and steps
+   - Plot performance metrics
+   - Save results
 """
 
 import os
@@ -104,10 +124,12 @@ def evaluate(args):
         video_dir=config.VIDEO_DIR if should_record else None
     )
     
-    # Initialize agent
+    # /* EVALUATION - Step 1 */
+    # Load trained DQN model
+    # Initialize agent with appropriate device
     agent = DQNAgent(device=device)
     
-    # Load model weights
+    # Load saved model weights
     print(f"Loading model from {args.model}...")
     try:
         agent.load(args.model)
@@ -120,7 +142,8 @@ def evaluate(args):
     total_rewards = []
     total_steps = []
     
-    # Evaluate for specified number of episodes
+    # /* EVALUATION - Step 2 */
+    # Evaluation loop (for each episode)
     print("\nStarting evaluation...")
     for episode in range(1, args.episodes + 1):
         # If recording is enabled, set unique video path for this episode
@@ -129,6 +152,8 @@ def evaluate(args):
             video_path = os.path.join(config.VIDEO_DIR, f"episode_{episode}_{timestamp}.mp4")
             env.metadata['video_path'] = video_path
         
+        # /* EVALUATION - Step 2a */
+        # Reset environment to initial state
         state, _ = env.reset()
         episode_reward = 0
         step_count = 0
@@ -137,14 +162,16 @@ def evaluate(args):
         
         start_time = time.time()
         
-        # Episode loop
+        # /* EVALUATION - Step 2b */
+        # For each step in episode
         while not (done or truncated) and step_count < args.max_steps:
-            # Select action using greedy policy (no exploration)
+            # i. Select action using greedy policy (no exploration)
             action = agent.select_action(state, evaluate=True)
             
-            # Execute action in environment
+            # ii. Execute action, observe reward and next state
             next_state, reward, done, truncated, _ = env.step(action)
             
+            # iii. Continue until episode ends or max steps reached
             # Update state and statistics
             state = next_state
             episode_reward += reward
@@ -156,7 +183,8 @@ def evaluate(args):
         
         elapsed_time = time.time() - start_time
         
-        # Store results
+        # /* EVALUATION - Step 2c */
+        # Record episode statistics (reward, steps, duration)
         total_rewards.append(episode_reward)
         total_steps.append(step_count)
         
@@ -165,7 +193,9 @@ def evaluate(args):
               f"Reward = {episode_reward}, Steps = {step_count}, "
               f"Duration = {elapsed_time:.2f}s")
     
-    # Calculate and print summary statistics
+    # /* EVALUATION - Step 3 */
+    # Generate evaluation summary
+    # Calculate average rewards and steps
     avg_reward = np.mean(total_rewards)
     std_reward = np.std(total_rewards)
     avg_steps = np.mean(total_steps)
@@ -180,7 +210,7 @@ def evaluate(args):
         print("\n✅ Successfully completed over 5000 steps across all episodes!")
         print("This demonstrates the agent's capability for extended gameplay.")
     
-    # Plot rewards and steps
+    # Plot performance metrics
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8))
     
     # Plot rewards
@@ -205,7 +235,7 @@ def evaluate(args):
     
     plt.tight_layout()
     
-    # Save the plot to the configured plots directory
+    # Save results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     plot_filename = f"evaluation_{timestamp}.png"
     plot_path = os.path.join(config.PLOT_DIR, plot_filename)

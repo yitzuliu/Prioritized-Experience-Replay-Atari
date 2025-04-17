@@ -7,6 +7,25 @@ handling environment interactions, neural network updates, and logging.
 用於 Atari 冰球遊戲的 DQN 優先經驗回放訓練腳本。
 
 此腳本執行 DQN 智能體的主要訓練循環，處理環境交互、神經網絡更新和日誌記錄。
+
+Pseudocode for DQN with PER Training Loop:
+1. Initialize environment and agent
+   - Create environment with appropriate wrappers
+   - Initialize DQN agent with primary and target networks
+   - Set up Prioritized Experience Replay memory
+
+2. Training loop (for each episode):
+   a. Reset environment to initial state
+   
+   b. For each step in episode:
+      i. Select action using ε-greedy policy
+      ii. Execute action, observe reward and next state
+      iii. Store transition in replay memory
+      iv. Optimize model if enough samples are collected
+      v. Update target network periodically
+   
+   c. Evaluate agent performance periodically
+   d. Save checkpoints and log statistics
 """
 
 import os
@@ -65,10 +84,10 @@ def create_directories():
     """Create necessary directories for saving results."""
     os.makedirs(config.RESULT_DIR, exist_ok=True)  # Create main result directory first
     os.makedirs(config.LOG_DIR, exist_ok=True)
-    os.makedirs(config.MODEL_DIR, exist_ok=True)  
+    # os.makedirs(config.MODEL_DIR, exist_ok=True)  
     os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(config.PLOT_DIR, exist_ok=True)
-    os.makedirs(config.DATA_DIR, exist_ok=True)
+    # os.makedirs(config.DATA_DIR, exist_ok=True)
 
 
 def evaluate_agent(agent, env, num_episodes=10):
@@ -179,10 +198,10 @@ def train(args):
     total_steps = 0
     best_eval_reward = float('-inf')
     
-    # 修改：記憶體管理變數
+    # Memory management variables
     last_memory_check = time.time()
-    memory_check_interval = config.memory_check_interval  # 每60秒檢查一次記憶體使用情況
-    memory_threshold_percent = config.memory_threshold_percent  # 當記憶體使用超過80%時進行清理
+    memory_check_interval = config.memory_check_interval  # 
+    memory_threshold_percent = config.memory_threshold_percent  # 
     peak_memory_usage = 0
     
     # Resume training if checkpoint provided
@@ -220,9 +239,10 @@ def train(args):
 
     try:
         # Start from specified episode when resuming
-        start_episode = args.start_episode if args.resume else 1
+        start_episode = (args.start_episode + 1) if args.resume else 1
         
         for episode in range(start_episode, args.episodes + 1):
+            # 2a. Reset environment to initial state
             episode_count = episode
             state, _ = env.reset()
             episode_reward = 0
@@ -242,32 +262,30 @@ def train(args):
                       end="", flush=True)
                 print()  # 添加這一行使得進度和下一行Episode輸出分開
             
-            # Episode loop
+            # 2b. For each step in episode:
             while not (done or truncated):
-                # Select action using epsilon-greedy policy
+                # i. Select action using ε-greedy policy
                 action = agent.select_action(state)
                 
-                # Execute action in environment
+                # ii. Execute action, observe reward and next state
                 next_state, reward, done, truncated, _ = env.step(action)
                 
-                # Store transition in replay buffer
+                # iii. Store transition in replay memory
                 agent.store_transition(state, action, reward, next_state, done)
                 
-                # Update state and statistics
+                # iv. Optimize model if enough samples are collected
                 state = next_state
                 episode_reward += reward
                 episode_length += 1
                 total_steps += 1
                 
-                # Update network
                 if total_steps % config.UPDATE_FREQUENCY == 0 and total_steps >= config.LEARNING_STARTS:
                     loss = agent.optimize_model()
                     
                     # Log training step
                     logger.log_training_step(total_steps, loss)
                 
-                # Update target network periodically - Fixed logic
-                # Use the agent's method which checks internal steps_done counter
+                # v. Update target network periodically
                 if agent.should_update_target_network():
                     agent.update_target_network()
                     print(f"Updated target network at step {agent.steps_done}")
@@ -322,13 +340,13 @@ def train(args):
                     
                 last_memory_check = current_time
             
+            # c. Evaluate agent performance periodically
             # Log episode statistics
             # Get current epsilon from agent
             epsilon = max(config.EPSILON_END, config.EPSILON_START - 
                           (config.EPSILON_START - config.EPSILON_END) * 
-                          min(1.0, total_steps / config.EPSILON_DECAY))
+                          min(1.0, agent.steps_done / config.EPSILON_DECAY))
             logger.log_episode(episode, episode_reward, episode_length, epsilon)
-            
             # Evaluate agent periodically
             if episode % args.eval_frequency == 0:
                 avg_reward, eval_rewards, eval_lengths = evaluate_agent(
@@ -343,6 +361,7 @@ def train(args):
                     agent.save(model_path)
                     print(f"New best model saved with reward: {best_eval_reward:.2f}")
             
+            # d. Save checkpoints and log statistics
             # Save checkpoint periodically
             if episode % config.SAVE_FREQUENCY == 0:
                 checkpoint_path = os.path.join(args.save_dir, f"{experiment_name}_ep{episode}.pth")

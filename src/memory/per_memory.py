@@ -69,12 +69,14 @@ class PrioritizedReplayMemory:
             beta_frames (int)：β值增長到1.0所需的幀數
             epsilon (float)：添加到TD誤差的小常數，確保優先級非零
         """
-        # Initialize the SumTree
+        # /* PER ALGORITHM - Step 1 */
+        # Initialize SumTree with capacity N
+        # SumTree is a binary tree data structure for efficient priority-based sampling
         self.tree = SumTree(capacity)
         
         # PER hyperparameters
-        self.alpha = alpha  # Priority exponent
-        self.beta = beta_start  # Importance sampling exponent
+        self.alpha = alpha  # Priority exponent - how much prioritization to use
+        self.beta = beta_start  # Importance sampling exponent - starts low and increases to 1
         self.beta_start = beta_start
         self.beta_frames = beta_frames
         self.epsilon = epsilon  # Small constant for non-zero priority
@@ -82,7 +84,7 @@ class PrioritizedReplayMemory:
         # To track how many frames have been processed for beta annealing
         self.frame_count = 0
         
-        # Max priority for new experiences
+        # Max priority for new experiences - ensures new transitions are sampled at least once
         self.max_priority = DEFAULT_NEW_PRIORITY
     
     def _get_priority(self, td_error):
@@ -103,8 +105,10 @@ class PrioritizedReplayMemory:
         返回：
             float：優先級值
         """
-        # Convert TD-error to priority according to the PER formula
-        # P(i) = (|δ_i| + ε)^α
+        # /* PER ALGORITHM - Step 2 */
+        # Calculate priority = |TD error|^α + ε
+        # α determines how much prioritization is used (0 = uniform, 1 = full prioritization)
+        # ε ensures all transitions have non-zero sampling probability
         return (np.abs(td_error) + self.epsilon) ** self.alpha
     
     def add(self, state, action, reward, next_state, done):
@@ -127,10 +131,14 @@ class PrioritizedReplayMemory:
             next_state：下一個狀態
             done：回合是否結束
         """
+        # /* PER ALGORITHM - Step 3 */
+        # Store transition with its priority in the SumTree
+        
         # Store experience as a tuple
         experience = (state, action, reward, next_state, done)
         
         # Use max priority for new experiences to ensure they're sampled at least once
+        # This implements the "first-visit" exploration strategy from the paper
         self.tree.add(self.max_priority, experience)
     
     def sample(self, batch_size=BATCH_SIZE):
@@ -157,15 +165,22 @@ class PrioritizedReplayMemory:
                 - indices：採樣的經驗的索引
                 - importance_weights：重要性採樣權重
         """
+        # /* PER ALGORITHM - Step 4 */
+        # When sampling, retrieve transitions with priority proportional to their probability
+        
         # Lists to store batch data
         states, actions, rewards, next_states, dones = [], [], [], [], []
         indices = []
         priorities = []
         
-        # Calculate segment size
+        # Calculate segment size - divides total priority into B equal segments
+        # This implements the "stratified sampling" approach mentioned in the paper
+        # to ensure a diverse batch with both high and low priority experiences
         segment_size = self.tree.total() / batch_size
         
         # Update beta value (annealing from beta_start to 1 over beta_frames)
+        # Beta controls how much importance sampling correction to apply
+        # As beta increases to 1, we correct more for the priority sampling bias
         self.beta = min(1.0, self.beta_start + (1.0 - self.beta_start) * 
                        (self.frame_count / self.beta_frames))
         self.frame_count += 1
@@ -208,13 +223,15 @@ class PrioritizedReplayMemory:
         next_states = torch.FloatTensor(next_states).to(device)
         dones = torch.FloatTensor(dones).to(device)
         
-        # Calculate importance sampling weights
-        # The importance sampling weight is w_i = (N * P(i))^(-β)
-        # where N is the memory size and P(i) is the probability of sampling transition i
+        # Calculate importance sampling weights w_j = (N·P(j))^(-β)
+        # These weights correct the bias introduced by prioritized sampling
+        # As β increases to 1, we fully correct for the sampling bias
         sampling_probabilities = np.array(priorities) / self.tree.total()
         importance_weights = (self.tree.size * sampling_probabilities) ** -self.beta
         
         # Normalize weights so they only scale the update downwards
+        # This ensures we only reduce the impact of high-priority samples
+        # rather than boosting the impact of low-priority ones
         importance_weights = importance_weights / importance_weights.max()
         
         # Convert weights to PyTorch tensor
@@ -238,14 +255,20 @@ class PrioritizedReplayMemory:
             indices (list)：採樣轉換的索引
             td_errors (list)：採樣轉換的 TD 誤差
         """
+        # /* PER ALGORITHM - Step 5 */
+        # Update priorities of transitions based on new TD-errors
+        # This is crucial for the PER algorithm as it allows the agent to continually 
+        # adjust which experiences are most valuable for learning
         for idx, td_error in zip(indices, td_errors):
-            # Calculate new priority
+            # Calculate new priority using the priority formula
             priority = self._get_priority(td_error)
             
-            # Update priority in the tree
+            # Update priority in the SumTree
+            # This operation is O(log n) thanks to the SumTree data structure
             self.tree.update(idx, priority)
             
             # Update max priority for new experiences
+            # This ensures new transitions get at least as much priority as the highest seen so far
             self.max_priority = max(self.max_priority, priority)
     
     def __len__(self):

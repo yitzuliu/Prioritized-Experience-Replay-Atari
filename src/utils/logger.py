@@ -105,213 +105,39 @@ class Logger:
         self.log_dir = os.path.join(log_dir, experiment_name)
         os.makedirs(self.log_dir, exist_ok=True)
         
-        # 建立一個臨時目錄來處理寫入操作，降低主存儲區的I/O負擔
+        # 建立一個臨時目錄來處理寫入操作
         self.temp_dir = tempfile.mkdtemp(prefix=f"dqn_per_temp_{experiment_name}_")
         logging.info(f"Created temporary log directory at {self.temp_dir}")
         
-        # Initialize statistics dictionaries
-        self.episode_rewards = []
-        self.episode_lengths = []
-        self.losses = []
-        self.priorities = []
-        self.eval_rewards = []
-        self.td_errors = []
+        # 只保留用於圖表和恢復訓練的數據
+        self.episode_rewards = []   # 用於繪製獎勵圖表
+        self.episode_lengths = []   # 用於繪製回合長度圖表
+        self.eval_rewards = []      # 用於繪製評估獎勵圖表
         
-        # Initialize timing statistics
+        # 這些數據用於恢復訓練
+        self.latest_episode = 0     # 最新的回合數
+        self.total_steps = 0        # 總步數
+        self.best_eval_reward = float('-inf')  # 最佳評估獎勵
+        
+        # 初始化計時器
         self.start_time = time.time()
         self.episode_start_time = self.start_time
-        self.last_flush_time = self.start_time
-                
-        # 增加緩衝區刷新控制
-        self.flush_interval = 2400  # 10分鐘刷新一次臨時文件到主存儲
+        
+        # 緊急備份路徑
         self.emergency_log_path = os.path.expanduser("~/dqn_per_emergency_log.json")
-                
-        # CSV file paths for continuous logging - use temp dir for frequent writes
-        self.temp_episode_csv_path = os.path.join(self.temp_dir, 'episode_stats.csv')
-        self.temp_eval_csv_path = os.path.join(self.temp_dir, 'eval_stats.csv')
-        self.temp_training_csv_path = os.path.join(self.temp_dir, 'training_stats.csv')
         
-        # Final paths in the log directory
-        self.episode_csv_path = os.path.join(self.log_dir, 'episode_stats.csv')
-        self.eval_csv_path = os.path.join(self.log_dir, 'eval_stats.csv')
-        self.training_csv_path = os.path.join(self.log_dir, 'training_stats.csv')
-        
-        # In-memory queue for data waiting to be written
-        self.episode_queue = []
-        self.eval_queue = []
-        self.training_queue = []
-        
-        # 調整緩衝區閾值 - 減少寫入頻率
-        self.episode_buffer_threshold = 20   # 累積20條記錄再寫入
-        self.training_buffer_threshold = 500  # 累積500步再寫入
-        
-        # Initialize CSV files with headers
-        self._init_csv_files()
-        
-        print(f"Logger initialized at {self.log_dir} (temporary files at {self.temp_dir})")
-            
+        # 最小化日誌檔案 - 只保留用於圖表和恢復的資料
+        print(f"Logger initialized at {self.log_dir} - Minimized logging mode (only chart data and recovery info)")
+        print(f"All CSV logging disabled to prevent I/O errors")
+    
     def __del__(self):
         """清理臨時文件夾，確保數據被保存"""
-        self._flush_to_permanent_storage()
         try:
             if hasattr(self, 'temp_dir') and os.path.exists(self.temp_dir):
                 shutil.rmtree(self.temp_dir)
                 logging.info(f"Cleaned up temporary directory {self.temp_dir}")
         except Exception as e:
             logging.error(f"Error cleaning up temp directory: {e}")
-    
-    @retry_on_io_error()
-    def _init_csv_files(self):
-        """Initialize CSV files with headers if they don't exist."""
-        # 檢查是否是恢復訓練
-        is_resuming = os.path.exists(self.episode_csv_path)
-        
-        # 如果是恢復訓練，先將現有文件複製到臨時目錄
-        if is_resuming:
-            try:
-                if os.path.exists(self.episode_csv_path):
-                    shutil.copy2(self.episode_csv_path, self.temp_episode_csv_path)
-                if os.path.exists(self.eval_csv_path):
-                    shutil.copy2(self.eval_csv_path, self.temp_eval_csv_path)
-                if os.path.exists(self.training_csv_path):
-                    shutil.copy2(self.training_csv_path, self.temp_training_csv_path)
-                logging.info("Copied existing log files to temp directory")
-            except Exception as e:
-                logging.error(f"Error copying existing logs: {e}")
-        
-        # 設置寫入模式
-        file_mode = 'a' if is_resuming else 'w'
-        
-        try:
-            # 初始化回合統計CSV
-            if not os.path.exists(self.temp_episode_csv_path) or os.path.getsize(self.temp_episode_csv_path) == 0:
-                with open(self.temp_episode_csv_path, file_mode, newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(['episode', 'reward', 'length', 'duration_seconds', 'epsilon'])
-            
-            # 初始化評估統計CSV
-            if not os.path.exists(self.temp_eval_csv_path) or os.path.getsize(self.temp_eval_csv_path) == 0:
-                with open(self.temp_eval_csv_path, file_mode, newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(['episode', 'avg_reward', 'std_reward', 'min_reward', 'max_reward', 'avg_length'])
-            
-            # 初始化訓練步驟統計CSV
-            if not os.path.exists(self.temp_training_csv_path) or os.path.getsize(self.temp_training_csv_path) == 0:
-                with open(self.temp_training_csv_path, file_mode, newline='') as f:
-                    writer = csv.writer(f)
-                    writer.writerow(['step', 'loss', 'avg_td_error', 'max_priority'])
-        except (IOError, OSError) as e:
-            logging.error(f"Error initializing CSV files: {str(e)}")
-            logging.error(traceback.format_exc())
-    
-    @retry_on_io_error()
-    def _write_to_csv(self, file_path, rows):
-        """
-        Write rows to a CSV file with error handling.
-        
-        Args:
-            file_path (str): Path to the CSV file
-            rows (list): List of rows to write
-        """
-        if not rows:
-            return
-        
-        # 如果文件不存在，先創建並寫入表頭
-        if not os.path.exists(file_path):
-            is_episode = 'episode_stats' in file_path
-            is_eval = 'eval_stats' in file_path
-            is_training = 'training_stats' in file_path
-            
-            headers = []
-            if is_episode:
-                headers = ['episode', 'reward', 'length', 'duration_seconds', 'epsilon']
-            elif is_eval:
-                headers = ['episode', 'avg_reward', 'std_reward', 'min_reward', 'max_reward', 'avg_length']
-            elif is_training:
-                headers = ['step', 'loss', 'avg_td_error', 'max_priority']
-            
-            if headers:
-                try:
-                    with open(file_path, 'w', newline='') as f:
-                        writer = csv.writer(f)
-                        writer.writerow(headers)
-                except Exception as e:
-                    logging.error(f"Failed to create file {file_path} with headers: {e}")
-                    return False
-            
-        # 使用"寫後保留"策略: 先寫到一個臨時文件，成功後再替換原文件
-        temp_file = f"{file_path}.tmp"
-        try:
-            # 如果原始文件存在，先複製內容
-            if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-                shutil.copy2(file_path, temp_file)
-            else:
-                # 否則創建一個新文件
-                with open(temp_file, 'w', newline='') as f:
-                    pass
-            
-            # 追加新行
-            with open(temp_file, 'a', newline='') as f:
-                writer = csv.writer(f)
-                for row in rows:
-                    writer.writerow(row)
-            
-            # 替換原文件 (原子操作)
-            shutil.move(temp_file, file_path)
-            return True
-            
-        except (IOError, OSError) as e:
-            logging.error(f"Error writing to {file_path}: {str(e)}")
-            
-            # 如果在替換文件時出錯，嘗試直接附加到原文件
-            try:
-                if os.path.exists(file_path):
-                    with open(file_path, 'a', newline='') as f:
-                        writer = csv.writer(f)
-                        for row in rows:
-                            writer.writerow(row)
-                    return True
-            except Exception as inner_e:
-                logging.error(f"Fallback write failed: {inner_e}")
-            
-            # 如果所有方法都失敗了
-            if os.path.exists(temp_file):
-                try:
-                    os.remove(temp_file)
-                except:
-                    pass
-            return False
-    
-    def _flush_to_permanent_storage(self):
-        """將臨時文件寫入到永久存儲"""
-        # 先將內存中的數據寫到臨時文件
-        if self.episode_queue:
-            self._write_to_csv(self.temp_episode_csv_path, self.episode_queue)
-            self.episode_queue = []
-        
-        if self.eval_queue:
-            self._write_to_csv(self.temp_eval_csv_path, self.eval_queue)
-            self.eval_queue = []
-        
-        if self.training_queue:
-            self._write_to_csv(self.temp_training_csv_path, self.training_queue)
-            self.training_queue = []
-        
-        # 然後將臨時文件複製到永久存儲
-        try:
-            if os.path.exists(self.temp_episode_csv_path):
-                shutil.copy2(self.temp_episode_csv_path, self.episode_csv_path)
-            
-            if os.path.exists(self.temp_eval_csv_path):
-                shutil.copy2(self.temp_eval_csv_path, self.eval_csv_path)
-            
-            if os.path.exists(self.temp_training_csv_path):
-                shutil.copy2(self.temp_training_csv_path, self.training_csv_path)
-            
-            logging.info("Successfully flushed logs to permanent storage")
-            self.last_flush_time = time.time()
-        except (IOError, OSError) as e:
-            logging.error(f"Error flushing to permanent storage: {e}")
     
     def log_episode(self, episode, reward, length, epsilon):
         """
@@ -340,24 +166,13 @@ class Logger:
         self.episode_rewards.append(reward)
         self.episode_lengths.append(length)
         
-        # Add to queue for writing
-        self.episode_queue.append([episode, reward, length, duration, epsilon])
-        
-        # 檢查是否該刷新到臨時文件 (每20回合)
-        if len(self.episode_queue) >= self.episode_buffer_threshold:
-            self._write_to_csv(self.temp_episode_csv_path, self.episode_queue)
-            self.episode_queue = []
-        
-        # 檢查是否應該將臨時文件刷新到永久存儲
-        if now - self.last_flush_time > self.flush_interval:
-            self._flush_to_permanent_storage()
-        
         # Print progress
         if episode % 10 == 0:
             elapsed = now - self.start_time
             avg_reward = np.mean(self.episode_rewards[-10:]) if self.episode_rewards else 0
             print(f"Episode {episode} | Current Reward: {reward:.1f} | Current Steps: {length} | "
-                  f"Epsilon: {epsilon:.4f} | Last 10 Eps Avg Reward: {avg_reward:.1f} | Total Training Time: {elapsed:.0f}s")
+                  f"Epsilon: {epsilon:.4f} | Last 10 Eps Avg Reward: {avg_reward:.1f} | Total Training Time: {elapsed:.0f}s", 
+                  flush=True)
     
     def log_evaluation(self, episode, rewards, lengths):
         """
@@ -385,20 +200,170 @@ class Logger:
         # Store in memory
         self.eval_rewards.append(avg_reward)
         
-        # Add to queue and write immediately (evaluation happens less frequently)
-        self.eval_queue.append([episode, avg_reward, std_reward, min_reward, max_reward, avg_length])
-        self._write_to_csv(self.temp_eval_csv_path, self.eval_queue)
-        self.eval_queue = []
-        
         # Print evaluation results
-        print(f"\n--- Evaluation after Episode {episode} ---")
-        print(f"Average Reward: {avg_reward:.2f} ± {std_reward:.2f}")
-        print(f"Min/Max Reward: {min_reward:.1f} / {max_reward:.1f}")
-        print(f"Average Length: {avg_length:.1f}")
-        print("-" * 40 + "\n")
+        print(f"\n--- Evaluation after Episode {episode} ---", flush=True)
+        print(f"Average Reward: {avg_reward:.2f} ± {std_reward:.2f}", flush=True)
+        print(f"Min/Max Reward: {min_reward:.1f} / {max_reward:.1f}", flush=True)
+        print(f"Average Length: {avg_length:.1f}", flush=True)
+        print("-" * 40 + "\n", flush=True)
+    
+    def get_stats(self):
+        """
+        Get all logged statistics as a dictionary.
         
-        # 評估時始終刷新到永久存儲，因為評估結果很重要
-        self._flush_to_permanent_storage()
+        Returns:
+            dict: All collected statistics
+            
+        以字典形式獲取所有記錄的統計數據。
+        
+        返回：
+            dict：所有收集的統計數據
+        """
+        stats = {
+            'episode_rewards': self.episode_rewards,
+            'episode_lengths': self.episode_lengths,
+            'eval_rewards': self.eval_rewards,
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        return stats
+    
+    @retry_on_io_error(max_retries=5, delay=3.0, backoff_factor=2.0)
+    def save_stats(self):
+        """
+        Save all statistics to JSON file.
+        
+        Returns:
+            str: Path to the saved statistics file
+            
+        將所有統計數據保存到 JSON 文件。
+        
+        返回：
+            str：保存的統計數據文件的路徑
+        """
+        # 縮減統計數據，只保留重要資訊
+        compact_stats = {
+            'episode_rewards': self.episode_rewards[-50:] if len(self.episode_rewards) > 50 else self.episode_rewards,
+            'episode_lengths': self.episode_lengths[-50:] if len(self.episode_lengths) > 50 else self.episode_lengths,
+            'eval_rewards': self.eval_rewards,
+            'max_reward': max(self.episode_rewards) if self.episode_rewards else 0,
+            'recent_avg_reward': np.mean(self.episode_rewards[-10:]) if len(self.episode_rewards) >= 10 else 0,
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'total_episodes': len(self.episode_rewards)
+        }
+        
+        # 將 numpy 數組轉換為列表以便 JSON 序列化
+        for key, value in compact_stats.items():
+            if isinstance(value, np.ndarray):
+                compact_stats[key] = value.tolist()
+            elif isinstance(value, np.float64) or isinstance(value, np.float32):
+                compact_stats[key] = float(value)
+        
+        # 直接保存到永久位置
+        stats_path = os.path.join(self.log_dir, 'stats.json')
+        
+        # 使用安全的寫入方式 - 先寫入臨時文件，然後移動替換
+        temp_stats_path = os.path.join(self.temp_dir, 'stats.json.tmp')
+        
+        try:
+            # 寫入臨時文件
+            with open(temp_stats_path, 'w') as f:
+                json.dump(compact_stats, f)
+            
+            # 移動替換目標文件
+            shutil.move(temp_stats_path, stats_path)
+            
+            print(f"Simplified statistics saved to {stats_path}")
+            
+            # 同時保存一個應急備份
+            with open(self.emergency_log_path, 'w') as f:
+                backup_stats = {
+                    'timestamp': compact_stats.get('timestamp'),
+                    'episode_count': compact_stats.get('total_episodes', 0),
+                    'last_rewards': compact_stats.get('episode_rewards', [])[-10:],
+                    'experiment_name': os.path.basename(self.log_dir),
+                    'max_reward': compact_stats.get('max_reward', 0),
+                    'recent_avg_reward': compact_stats.get('recent_avg_reward', 0)
+                }
+                json.dump(backup_stats, f)
+            
+            return stats_path
+            
+        except (IOError, OSError) as e:
+            logging.error(f"Error saving stats to {stats_path}: {str(e)}")
+            logging.error(traceback.format_exc())
+            
+            # 基本備份 - 嘗試直接保存到用戶主目錄
+            try:
+                backup_path = os.path.join(os.path.expanduser("~"), f"dqn_per_backup_{int(time.time())}.json")
+                with open(backup_path, 'w') as f:
+                    json.dump(backup_stats, f)
+                print(f"Emergency backup saved to {backup_path}")
+                return backup_path
+            except Exception as backup_e:
+                logging.error(f"Failed to save backup: {backup_e}")
+                print("Failed to save any statistics")
+                return None
+    
+    @retry_on_io_error(max_retries=5, delay=3.0, backoff_factor=2.0)
+    def save_recovery_info(self):
+        """
+        Save recovery information for resuming training later.
+        
+        Returns:
+            str: Path to the saved recovery file
+            
+        保存恢復信息以便稍後恢復訓練。
+        
+        返回：
+            str：保存的恢復文件的路徑
+        """
+        recovery_info = {
+            'latest_episode': self.latest_episode,
+            'total_steps': self.total_steps,
+            'best_eval_reward': float(self.best_eval_reward) if self.best_eval_reward != float('-inf') else None,
+            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            'elapsed_time': time.time() - self.start_time
+        }
+        
+        # 保存到恢復文件
+        recovery_path = os.path.join(self.log_dir, 'recovery_info.json')
+        temp_recovery_path = os.path.join(self.temp_dir, 'recovery_info.json.tmp')
+        
+        try:
+            # 寫入臨時文件
+            with open(temp_recovery_path, 'w') as f:
+                json.dump(recovery_info, f)
+            
+            # 移動替換目標文件
+            shutil.move(temp_recovery_path, recovery_path)
+            logging.info(f"Recovery information saved to {recovery_path}")
+            
+            return recovery_path
+        except (IOError, OSError) as e:
+            logging.error(f"Error saving recovery info: {str(e)}")
+            return None
+    
+    def update_training_progress(self, episode, total_steps, best_reward=None):
+        """
+        Update training progress information (for recovery purposes).
+        
+        Args:
+            episode (int): Current episode number
+            total_steps (int): Total training steps so far
+            best_reward (float, optional): Best evaluation reward so far
+            
+        更新訓練進度信息（用於恢復訓練）。
+        
+        參數：
+            episode (int)：當前回合編號
+            total_steps (int)：到目前為止的總訓練步數
+            best_reward (float, optional)：到目前為止的最佳評估獎勵
+        """
+        self.latest_episode = episode
+        self.total_steps = total_steps
+        
+        if best_reward is not None and best_reward > self.best_eval_reward:
+            self.best_eval_reward = best_reward
     
     def log_training_step(self, step, loss, td_errors=None, max_priority=None):
         """
@@ -418,23 +383,8 @@ class Logger:
             td_errors (list, optional)：此批次的 TD 誤差
             max_priority (float, optional)：最大優先級值
         """
-        # Store in memory
-        self.losses.append(loss)
-        
-        # Store TD errors if provided
-        avg_td_error = None
-        if td_errors is not None and len(td_errors) > 0:
-            avg_td_error = np.mean(np.abs(td_errors))
-            self.td_errors.extend(np.abs(td_errors).flatten())
-        
-        # Always add the data point to our queue
-        self.training_queue.append([step, loss, avg_td_error, max_priority])
-        
-        # 減少寫入頻率 - 每500步或每1000步
-        if len(self.training_queue) >= self.training_buffer_threshold or step % 1000 == 0:
-            success = self._write_to_csv(self.temp_training_csv_path, self.training_queue)
-            if success:
-                self.training_queue = []  # Only clear if write was successful
+        # 只保留在記憶體中，不寫入文件
+        # 在簡化版本中，我們不再儲存每一步的損失值，而是只記錄用於繪圖的資料
     
     def log_priorities(self, priorities):
         """
@@ -448,112 +398,6 @@ class Logger:
         參數：
             priorities (numpy.ndarray)：當前優先級數組
         """
-        # Store priorities (we don't need to store all of them, a sample is enough)
-        if len(priorities) > 1000:
-            # Sample a subset to avoid excessive memory usage
-            indices = np.random.choice(len(priorities), size=1000, replace=False)
-            sampled_priorities = priorities[indices]
-        else:
-            sampled_priorities = priorities
-        
-        self.priorities = sampled_priorities.copy()
-    
-    def get_stats(self):
-        """
-        Get all logged statistics as a dictionary.
-        
-        Returns:
-            dict: All collected statistics
-            
-        以字典形式獲取所有記錄的統計數據。
-        
-        返回：
-            dict：所有收集的統計數據
-        """
-        stats = {
-            'episode_rewards': self.episode_rewards,
-            'episode_lengths': self.episode_lengths,
-            'losses': self.losses,
-            'priorities': self.priorities,
-            'eval_rewards': self.eval_rewards,
-            'td_errors': self.td_errors,
-            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        return stats
-    
-    @retry_on_io_error(max_retries=10, delay=3.0, backoff_factor=2.0)
-    def save_stats(self):
-        """
-        Save all statistics to JSON file.
-        
-        Returns:
-            str: Path to the saved statistics file
-            
-        將所有統計數據保存到 JSON 文件。
-        
-        返回：
-            str：保存的統計數據文件的路徑
-        """
-        # 先刷新內存隊列到臨時文件
-        if self.episode_queue:
-            self._write_to_csv(self.temp_episode_csv_path, self.episode_queue)
-            self.episode_queue = []
-        
-        if self.eval_queue:
-            self._write_to_csv(self.temp_eval_csv_path, self.eval_queue)
-            self.eval_queue = []
-        
-        if self.training_queue:
-            self._write_to_csv(self.temp_training_csv_path, self.training_queue)
-            self.training_queue = []
-        
-        # 然後將臨時文件刷新到永久存儲
-        self._flush_to_permanent_storage()
-        
-        # 獲取統計數據並準備保存
-        stats = self.get_stats()
-        
-        # Convert numpy arrays to lists for JSON serialization
-        for key, value in stats.items():
-            if isinstance(value, np.ndarray):
-                stats[key] = value.tolist()
-        
-        # Save using write-then-move pattern (atomic operation)
-        stats_path = os.path.join(self.log_dir, 'stats.json')
-        temp_stats_path = os.path.join(self.temp_dir, 'stats.json.tmp')
-        
-        try:
-            # 先寫入臨時文件
-            with open(temp_stats_path, 'w') as f:
-                json.dump(stats, f)
-            
-            # 然後移動替換目標文件
-            shutil.move(temp_stats_path, stats_path)
-            print(f"Statistics saved to {stats_path}")
-            
-            # 成功保存後，同時寫入一個應急備份
-            with open(self.emergency_log_path, 'w') as f:
-                backup_stats = {
-                    'timestamp': stats.get('timestamp', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-                    'episode_count': len(stats.get('episode_rewards', [])),
-                    'last_rewards': stats.get('episode_rewards', [])[-10:] if stats.get('episode_rewards') else [],
-                    'experiment_name': os.path.basename(self.log_dir)
-                }
-                json.dump(backup_stats, f)
-            
-            return stats_path
-        except (IOError, OSError) as e:
-            logging.error(f"Error saving stats to {stats_path}: {str(e)}")
-            logging.error(traceback.format_exc())
-            
-            # 嘗試直接保存到家目錄的備份位置
-            backup_path = os.path.join(os.path.expanduser("~"), f"dqn_per_stats_backup_{int(time.time())}.json")
-            try:
-                with open(backup_path, 'w') as f:
-                    json.dump(stats, f)
-                print(f"Statistics saved to backup location: {backup_path}")
-                return backup_path
-            except Exception as backup_e:
-                logging.error(f"Failed to save backup: {backup_e}")
-                print("Failed to save statistics to backup location")
-                return None
+        # 在簡化版本中，我們不再存儲優先級分佈
+        # 如果視覺化需要，可以在未來添加這部分功能
+        pass

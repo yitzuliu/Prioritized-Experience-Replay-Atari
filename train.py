@@ -198,6 +198,9 @@ def train(args):
     total_steps = 0
     best_eval_reward = float('-inf')
     
+    # 初始化 start_episode
+    start_episode = (args.start_episode + 1) if args.resume else 1
+    
     # Memory management variables
     last_memory_check = time.time()
     memory_check_interval = config.memory_check_interval  # 
@@ -231,6 +234,13 @@ def train(args):
             
     logger = Logger(log_dir=config.LOG_DIR, experiment_name=experiment_name)
     
+    # 訓練循環開始前更新恢復信息
+    logger.update_training_progress(
+        episode=start_episode-1, 
+        total_steps=total_steps, 
+        best_reward=best_eval_reward
+    )
+    
     # Training loop - main algorithm
     print("\nStarting training...\n")
     # Variables to track training progress
@@ -238,9 +248,6 @@ def train(args):
     progress_update_frequency = 10  # Update progress every 10 episodes
 
     try:
-        # Start from specified episode when resuming
-        start_episode = (args.start_episode + 1) if args.resume else 1
-        
         for episode in range(start_episode, args.episodes + 1):
             # 2a. Reset environment to initial state
             episode_count = episode
@@ -340,6 +347,9 @@ def train(args):
                     
                 last_memory_check = current_time
             
+            # 更新恢復信息
+            logger.update_training_progress(episode, total_steps, best_eval_reward)
+            
             # c. Evaluate agent performance periodically
             # Log episode statistics
             # Get current epsilon from agent
@@ -370,6 +380,8 @@ def train(args):
                 
                 # Also save current statistics and generate plots
                 logger.save_stats()
+                # 保存恢復信息
+                logger.save_recovery_info()
                 save_training_plots(logger.get_stats(), run_name=experiment_name)
     
     except KeyboardInterrupt:
@@ -401,6 +413,8 @@ def train(args):
             
             # Save statistics and generate plots
             logger.save_stats()
+            # 保存最終恢復信息
+            logger.save_recovery_info()
             results_dir = save_training_plots(logger.get_stats(), run_name=experiment_name, output_dir=config.PLOT_DIR)
             
             print("\nTraining summary:")

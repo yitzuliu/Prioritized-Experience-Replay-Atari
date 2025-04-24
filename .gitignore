@@ -53,6 +53,9 @@ videos/
 *.jpeg
 *.gif
 
+# 專案特定檔案 Project specific files
+TODO.md
+
 # 除項目所需外的其他文件 Other files except project requirements
 !README.md
 !requirements.txt

@@ -12,8 +12,53 @@ DQN 優先經驗回放的可視化工具。
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import time
+import traceback
+import logging
 from datetime import datetime
 import config
+from functools import wraps
+
+
+def retry_on_io_error(max_retries=5, delay=2.0, backoff_factor=1.5):
+    """
+    Decorator to retry file operations on I/O errors with exponential backoff.
+    
+    Args:
+        max_retries (int): Maximum number of retry attempts
+        delay (float): Initial delay between retries in seconds
+        backoff_factor (float): Factor by which to increase delay after each failure
+        
+    裝飾器，用於在 I/O 錯誤時重試文件操作，採用指數退避策略。
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            current_delay = delay
+            last_exception = None
+            
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except (IOError, OSError) as e:
+                    last_exception = e
+                    error_code = getattr(e, 'errno', None)
+                    error_msg = str(e)
+                    
+                    # Log error details for debugging
+                    logging.warning(f"I/O error during {func.__name__}: [Errno {error_code}] {error_msg}. "
+                                    f"Attempt {attempt+1}/{max_retries}")
+                    
+                    if attempt < max_retries - 1:
+                        logging.info(f"Waiting {current_delay:.1f}s before retry...")
+                        time.sleep(current_delay)
+                        current_delay *= backoff_factor  # Exponential backoff
+            
+            # If all attempts fail, log error but don't interrupt training
+            logging.error(f"Failed to execute {func.__name__} after {max_retries} attempts: {str(last_exception)}")
+            return None
+        return wrapper
+    return decorator
 
 
 def setup_plotting_style():
@@ -179,14 +224,31 @@ def create_combined_plot(stats, smoothing=0.9, save_path=None):
     
     # Save if path is specified
     if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        try:
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            
+            # Try to save the figure directly without using temporary files
+            plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        except (IOError, OSError) as e:
+            logging.error(f"Error saving plot to {save_path}: {str(e)}")
+            
+            # Try alternative save location in same filesystem
+            try:
+                alt_dir = os.path.dirname(os.path.dirname(save_path))
+                alt_filename = f"backup_plot_{int(time.time())}.png"
+                alt_path = os.path.join(alt_dir, alt_filename)
+                plt.savefig(alt_path, dpi=300, bbox_inches='tight')
+                logging.info(f"Plot saved to alternative location: {alt_path}")
+            except Exception as backup_e:
+                logging.error(f"Failed to save plot to alternative location: {str(backup_e)}")
     
     plt.close(fig)
     
     return fig
 
 
+@retry_on_io_error(max_retries=5, delay=3.0, backoff_factor=2.0)
 def save_training_plots(stats, run_name=None, output_dir=None):
     """
     Generate and save combined training plot.
@@ -205,7 +267,7 @@ def save_training_plots(stats, run_name=None, output_dir=None):
     """
     # Set up output directory
     if output_dir is None:
-        output_dir = config.RESULT_DIR
+        output_dir = config.PLOT_DIR  # Use dedicated plot directory instead of general result dir
     
     if run_name is None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -213,7 +275,12 @@ def save_training_plots(stats, run_name=None, output_dir=None):
     
     # Create output directory if it doesn't exist
     results_dir = os.path.join(output_dir, run_name)
-    os.makedirs(results_dir, exist_ok=True)
+    try:
+        os.makedirs(results_dir, exist_ok=True)
+    except (IOError, OSError) as e:
+        logging.error(f"Failed to create plot directory at {results_dir}: {str(e)}")
+        # Try to use parent directory as fallback
+        results_dir = output_dir
     
     # Create and save combined plot
     save_path = os.path.join(results_dir, 'training_metrics_combined.png')

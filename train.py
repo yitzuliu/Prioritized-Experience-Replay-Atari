@@ -36,8 +36,8 @@ import gymnasium as gym
 from datetime import datetime
 import time
 import sys
-import gc  # 添加垃圾回收模塊
-import psutil  # 用於記憶體監控
+import gc 
+import psutil 
 
 import config
 from src.environment import make_atari_env
@@ -50,6 +50,7 @@ from src.utils.visualization import save_training_plots
 def parse_args():
     """
     Parse command line arguments.
+    
     解析命令行參數。
     """
     parser = argparse.ArgumentParser(description="Train DQN with PER on Atari Ice Hockey")
@@ -84,10 +85,8 @@ def create_directories():
     """Create necessary directories for saving results."""
     os.makedirs(config.RESULT_DIR, exist_ok=True)  # Create main result directory first
     os.makedirs(config.LOG_DIR, exist_ok=True)
-    # os.makedirs(config.MODEL_DIR, exist_ok=True)  
     os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(config.PLOT_DIR, exist_ok=True)
-    # os.makedirs(config.DATA_DIR, exist_ok=True)
 
 
 def evaluate_agent(agent, env, num_episodes=10):
@@ -193,18 +192,18 @@ def train(args):
     # Initialize DQN agent
     agent = DQNAgent(device=device, use_per=args.use_per)
     
-    # Variables for training loop
+    # Variables for training loop (訓練循環變量)
     episode_count = 0
     total_steps = 0
     best_eval_reward = float('-inf')
     
-    # 初始化 start_episode
+    # Initialize start_episode (初始化起始回合)
     start_episode = (args.start_episode + 1) if args.resume else 1
     
-    # Memory management variables
+    # Memory management variables (記憶體管理變量)
     last_memory_check = time.time()
-    memory_check_interval = config.memory_check_interval  # 
-    memory_threshold_percent = config.memory_threshold_percent  # 
+    memory_check_interval = config.MEMORY_CHECK_INTERVAL  # Check interval (檢查間隔)
+    memory_threshold_percent = config.MEMORY_THRESHOLD_PERCENT  # Memory threshold (記憶體閾值)
     peak_memory_usage = 0
     
     # Resume training if checkpoint provided
@@ -234,7 +233,7 @@ def train(args):
             
     logger = Logger(log_dir=config.LOG_DIR, experiment_name=experiment_name)
     
-    # 訓練循環開始前更新恢復信息
+    # Update training progress before starting the training loop (在開始訓練循環前更新恢復信息)
     logger.update_training_progress(
         episode=start_episode-1, 
         total_steps=total_steps, 
@@ -249,7 +248,7 @@ def train(args):
 
     try:
         for episode in range(start_episode, args.episodes + 1):
-            # 2a. Reset environment to initial state
+            # 2a. Reset environment to initial state (重置環境到初始狀態)
             episode_count = episode
             state, _ = env.reset()
             episode_reward = 0
@@ -257,7 +256,7 @@ def train(args):
             done = False
             truncated = False
             
-            # Calculate and display overall progress percentage
+            # Calculate and display overall progress percentage (計算並顯示整體進度百分比)
             progress_pct = (episode - start_episode) / (args.episodes - start_episode + 1) * 100
             elapsed_time = time.time() - training_start_time
             if episode == start_episode or episode % progress_update_frequency == 0:
@@ -267,20 +266,20 @@ def train(args):
                 minutes, seconds = divmod(remainder, 60)
                 print(f"\rOverall Progress: {progress_pct:.1f}% | Est. remaining: {int(hours)}h {int(minutes)}m {int(seconds)}s", 
                       end="", flush=True)
-                print()  # 添加這一行使得進度和下一行Episode輸出分開
+                print()  # Add line break to separate progress from episode output (添加換行以分隔進度和回合輸出)
             
-            # 2b. For each step in episode:
+            # 2b. For each step in episode: (對於回合中的每一步:)
             while not (done or truncated):
-                # i. Select action using ε-greedy policy
+                # 2b-i. Select action using ε-greedy policy (使用ε-greedy策略選擇動作)
                 action = agent.select_action(state)
                 
-                # ii. Execute action, observe reward and next state
+                # 2b-ii. Execute action, observe reward and next state (執行動作，觀察獎勵和下一個狀態)
                 next_state, reward, done, truncated, _ = env.step(action)
                 
-                # iii. Store transition in replay memory
+                # 2b-iii. Store transition in replay memory (將轉換存儲到回放記憶體)
                 agent.store_transition(state, action, reward, next_state, done)
                 
-                # iv. Optimize model if enough samples are collected
+                # 2b-iv. Optimize model if enough samples are collected (如果收集了足夠的樣本，優化模型)
                 state = next_state
                 episode_reward += reward
                 episode_length += 1
@@ -289,20 +288,20 @@ def train(args):
                 if total_steps % config.UPDATE_FREQUENCY == 0 and total_steps >= config.LEARNING_STARTS:
                     loss = agent.optimize_model()
                     
-                    # Log training step
+                    # Log training step (記錄訓練步驟)
                     logger.log_training_step(total_steps, loss)
                 
-                # v. Update target network periodically
+                # 2b-v. Update target network periodically (定期更新目標網絡)
                 if agent.should_update_target_network():
                     agent.update_target_network()
                     print(f"Updated target network at step {agent.steps_done}")
                 
-                # Log priority distribution occasionally
+                # Log priority distribution occasionally (偶爾記錄優先級分佈)
                 if args.use_per and total_steps % 10000 == 0:
                     priorities = agent.memory.tree.get_leaf_values()
                     logger.log_priorities(priorities)
             
-            # 修改：基於記憶體使用百分比的清理機制
+            # Memory usage check and cleanup (記憶體使用檢查和清理)
             current_time = time.time()
             if current_time - last_memory_check > memory_check_interval:
                 # 獲取當前記憶體使用情況
@@ -347,42 +346,39 @@ def train(args):
                     
                 last_memory_check = current_time
             
-            # 更新恢復信息
+            # Update recovery information (更新恢復信息)
             logger.update_training_progress(episode, total_steps, best_eval_reward)
             
-            # c. Evaluate agent performance periodically
-            # Log episode statistics
-            # Get current epsilon from agent
+            # 2c. Evaluate agent performance periodically (定期評估智能體性能)
+            # Log episode statistics (記錄回合統計數據)
             epsilon = max(config.EPSILON_END, config.EPSILON_START - 
                           (config.EPSILON_START - config.EPSILON_END) * 
                           min(1.0, agent.steps_done / config.EPSILON_DECAY))
             logger.log_episode(episode, episode_reward, episode_length, epsilon)
-            # Evaluate agent periodically
+            
+            # Evaluate agent periodically (定期評估智能體)
             if episode % args.eval_frequency == 0:
                 avg_reward, eval_rewards, eval_lengths = evaluate_agent(
                     agent, eval_env, num_episodes=args.eval_episodes
                 )
                 logger.log_evaluation(episode, eval_rewards, eval_lengths)
                 
-                # Save best model
+                # Save best model (保存最佳模型)
                 if avg_reward > best_eval_reward:
                     best_eval_reward = avg_reward
                     model_path = os.path.join(args.save_dir, f"{experiment_name}_best.pth")
                     agent.save(model_path)
                     print(f"New best model saved with reward: {best_eval_reward:.2f}")
             
-            # d. Save checkpoints and log statistics
-            # Save checkpoint periodically
+            # 2d. Save checkpoints and log statistics (保存檢查點和記錄統計數據)
             if episode % config.SAVE_FREQUENCY == 0:
                 checkpoint_path = os.path.join(args.save_dir, f"{experiment_name}_ep{episode}.pth")
                 agent.save(checkpoint_path)
                 print(f"Checkpoint saved at episode {episode}")
                 
-                # Also save current statistics and generate plots
-                logger.save_stats()
-                # 保存恢復信息
-                logger.save_recovery_info()
-                save_training_plots(logger.get_stats(), run_name=experiment_name)
+                # Also save current statistics and generate plots (同時保存當前統計數據和生成圖表)
+                logger.save_data()  # save_data() 會同時保存恢復信息，不需要再調用
+                save_training_plots(logger.get_stats(), run_name=experiment_name, output_dir=config.PLOT_DIR)
     
     except KeyboardInterrupt:
         print("\n\nTraining interrupted by user. Saving final state...")
@@ -392,7 +388,7 @@ def train(args):
         traceback.print_exc()
         print("Attempting to save current state before exiting...")
     finally:
-        # 最終記憶體使用情況報告
+        # Final memory usage report (最終記憶體使用情況報告)
         if 'process' in locals():
             final_memory = process.memory_info().rss / 1024 / 1024  # MB
             print(f"\nFinal memory usage: {final_memory:.1f}MB, Peak: {peak_memory_usage:.1f}MB")
@@ -403,7 +399,7 @@ def train(args):
         # Save final model
         final_path = os.path.join(args.save_dir, f"{experiment_name}_final.pth")
         try:
-            # Save with additional training statistics 
+            # Save with additional training statistics (保存附加訓練統計數據)
             agent.save(final_path, {
                 'total_steps': total_steps,
                 'best_eval_reward': best_eval_reward,
@@ -411,10 +407,8 @@ def train(args):
             })
             print(f"Final model saved to {final_path}")
             
-            # Save statistics and generate plots
-            logger.save_stats()
-            # 保存最終恢復信息
-            logger.save_recovery_info()
+            # Save statistics and generate plots (保存統計數據和生成圖表)
+            logger.save_data()
             results_dir = save_training_plots(logger.get_stats(), run_name=experiment_name, output_dir=config.PLOT_DIR)
             
             print("\nTraining summary:")

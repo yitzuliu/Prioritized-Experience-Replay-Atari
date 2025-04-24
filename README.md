@@ -1,174 +1,179 @@
-# DQN with Prioritized Experience Replay for Atari Ice Hockey
+# Prioritized Experience Replay (PER) for Atari Ice Hockey
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-1.8+-red.svg)](https://pytorch.org/)
-[![Gymnasium](https://img.shields.io/badge/Gymnasium-0.28+-green.svg)](https://gymnasium.farama.org/)
+Training a Deep Q-Network (DQN) to play Atari Ice Hockey using Prioritized Experience Replay (PER) technique.
 
-This project implements Deep Q-Networks with Prioritized Experience Replay (PER) to play Atari Ice Hockey. By prioritizing experiences, PER can improve DQN's learning efficiency by focusing on more valuable transitions.
+使用優先經驗回放 (PER) 技術訓練深度 Q 網絡 (DQN) 學習玩 Atari 冰球遊戲。
 
-*這個項目實現了帶優先經驗回放 (Prioritized Experience Replay, PER) 的深度 Q 網絡 (DQN) 來玩 Atari 冰球遊戲。通過使用優先級來選擇經驗，優先經驗回放可以提高 DQN 的學習效率，關注更有價值的轉換。*
+![Atari Ice Hockey](https://gym.openai.com/videos/2019-10-21--mqt8Qj1mwo/ALE-IceHockey-v5/poster.jpg)
 
-![Ice Hockey Game](https://gymnasium.farama.org/_images/ice_hockey.gif)
+## 📝 Project Overview (專案概述)
 
-## Features
+This project implements a Deep Q-Network (DQN) with Prioritized Experience Replay (PER) to play the Atari Ice Hockey game. PER is an enhanced experience replay mechanism that prioritizes sampling of high-value experiences based on their importance (measured by TD-error). This approach significantly improves DQN's learning efficiency and performance.
 
-- **Prioritized Experience Replay** - Using SumTree data structure for O(log n) priority-based sampling
-- **Visualization Tools** - Training progress, reward curves, priority distributions
-- **Cross-platform Compatibility** - Support for CPU, NVIDIA GPUs, and Apple Silicon (MPS)
-- **Comprehensive Educational Comments** - Beginner-friendly reinforcement learning code
-- **Detailed Pseudocode** - Helps understand algorithm principles
+本專案實現了一個帶有優先經驗回放 (PER) 的深度 Q 網絡 (DQN) 來玩 Atari 冰球遊戲。優先經驗回放是一種改進型經驗回放機制，它根據樣本的重要性（由 TD 誤差測量）來優先採樣高價值的經驗。這種方法可以顯著提高 DQN 的學習效率和性能。
 
-*特點：優先經驗回放、可視化工具、跨平台兼容、完整的教學註釋、詳細的偽代碼*
+### 💡 Key Features (主要特點)
 
-## Installation
+- **Complete PER Implementation**: Using SumTree data structure for efficient priority-based experience storage and sampling
+- **Multi-Platform Compatibility**: Automatic detection and utilization of CPU, CUDA (NVIDIA GPU), or MPS (Apple Silicon)
+- **Detailed Visualization**: Provides visualizations of training progress, rewards, losses, and priority distributions
+- **Educational Implementation**: Includes detailed bilingual (English/Chinese) comments and algorithm explanations suitable for learning and research
+- **Efficient Training**: Optimized environment preprocessing, experience sampling, and model architecture with support for training interruption and resumption
 
-### Requirements
+*主要特點：完整的 PER 實現、多平台兼容、詳細視覺化、教育性實現和高效訓練機制*
 
-- Python 3.8 or higher
-- PyTorch 1.8 or higher
-- Gymnasium with Atari support
+## 🛠️ Installation & Setup (安裝與設置)
 
-### Steps
+### Prerequisites (前提條件)
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/yourusername/dqn-per-ice-hockey.git
-   cd dqn-per-ice-hockey
-   ```
+- Python 3.8+
+- PyTorch 2.0+
+- Gymnasium (newer version of OpenAI Gym)
+- Other necessary dependencies
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+### Installation Steps (安裝步驟)
 
-3. Install Atari ROM support:
-   ```bash
-   pip install gymnasium[atari,accept-rom-license]
-   ```
+1. Clone the repository
+```bash
+git clone https://github.com/yourusername/atari-ice-hockey-per.git
+cd atari-ice-hockey-per
+```
 
-*安裝：克隆此倉庫，安裝依賴，安裝 Atari ROM 支持*
+2. Install required dependencies
+```bash
+pip install -r requirements.txt
+```
 
-## Usage
+## 📊 Project Structure (專案結構)
 
-### Training the agent
+```
+.
+├── config.py                    # Configuration file with all hyperparameters
+├── train.py                     # Training script to start the training process
+├── resume.py                    # Script to resume training from checkpoints
+├── src/
+│   ├── dqn_agent.py             # DQN agent implementation
+│   ├── per_memory.py            # Prioritized Experience Replay memory
+│   ├── sumtree.py               # SumTree data structure implementation
+│   ├── q_network.py             # Q-Network neural network architecture
+│   ├── env_wrappers.py          # Atari environment wrappers
+│   ├── device_utils.py          # Device detection and optimization utilities
+│   ├── logger.py                # Training logging tools
+│   └── visualization.py         # Training metrics visualization tools
+├── result/                      # Directory for storing training results
+│   ├── data/                    # Training data
+│   ├── logs/                    # Training logs
+│   ├── models/                  # Saved models
+│   └── plots/                   # Generated plots
+└── CHECKLIST.md                 # Implementation plan and pseudocode
+```
 
-To train a DQN agent with PER using default parameters:
+## 🚀 Usage (使用方法)
+
+### Training a Model (訓練模型)
+
+To train a new model from scratch:
+
 ```bash
 python train.py
 ```
 
-Additional training options:
+To train with custom configuration:
+
 ```bash
-# Without Prioritized Experience Replay
-python train.py --use-per False
-
-# Display training visualization
-python train.py --render
-
-# Specify number of training episodes
-python train.py --episodes 1000
-
-# Force CPU usage
-python train.py --cpu
+python train.py --experiment_name custom_run --render
 ```
 
-*訓練：使用默認參數訓練、不使用優先經驗回放、顯示訓練可視化、指定訓練回合數、強制使用CPU*
+### Resuming Training (恢復訓練)
 
-### Evaluating the agent
+To resume training from a checkpoint:
 
-To evaluate a trained model:
 ```bash
-python evaluate.py --model checkpoints/dqn_per_TIMESTAMP_best.pth --render
+python resume.py --checkpoint_path result/models/exp_timestamp/checkpoint_100.pt
 ```
 
-Additional evaluation options:
-```bash
-# Slow playback for better observation
-python evaluate.py --model checkpoints/dqn_per_TIMESTAMP_best.pth --render --slow
+### Algorithm Description (演算法說明)
 
-# Record videos
-python evaluate.py --model checkpoints/dqn_per_TIMESTAMP_best.pth --record
+This project implements the DQN algorithm with Prioritized Experience Replay:
 
-# Specify number of evaluation episodes
-python evaluate.py --model checkpoints/dqn_per_TIMESTAMP_best.pth --episodes 20
-```
+1. **Prioritized Experience Replay (PER)**:
+   - Efficiently stores and samples experiences using a SumTree data structure
+   - Transitions are assigned priorities based on TD-error: p = (|δ|+ε)^α
+   - Importance sampling weights w = (N·P(i))^(-β) correct the bias introduced
+   - β gradually increases from 0.4 to 1.0 over time
 
-*評估：評估訓練好的模型、慢速播放、錄製影片、指定評估回合數*
+2. **DQN Architecture**:
+   - 3-layer convolutional neural network followed by fully connected layers
+   - Dual network architecture (policy and target networks) with PER integration
+   - ε-greedy exploration strategy with decaying ε value
+   - Target network updates every 20,000 steps
 
-## Project Structure
+## 📈 Experimental Results (實驗結果)
 
-```
-.
-├── config.py                 # Configuration parameters
-├── train.py                  # Training script
-├── evaluate.py               # Evaluation script
-├── src/                      # Source code
-│   ├── agent/                # Agent implementation
-│   │   ├── __init__.py
-│   │   ├── dqn_agent.py      # DQN agent
-│   │   └── q_network.py      # Q network architecture
-│   ├── environment/          # Environment wrappers
-│   │   ├── __init__.py
-│   │   └── env_wrappers.py   # Atari environment wrappers
-│   ├── memory/               # Memory module
-│   │   ├── __init__.py
-│   │   ├── per_memory.py     # Prioritized experience replay
-│   │   └── sumtree.py        # SumTree data structure
-│   └── utils/                # Utility functions
-│       ├── __init__.py
-│       ├── device_utils.py   # Device detection
-│       ├── logger.py         # Logging
-│       └── visualization.py  # Visualization
-├── logs/                     # Logs directory
-├── checkpoints/              # Model checkpoints
-├── results/                  # Results and plots
-└── README.md                 # This document
-```
+The training process generates various visualizations stored in the `result/plots` directory:
 
-*項目結構：配置參數、訓練腳本、評估腳本、源代碼、日誌目錄、模型檢查點、結果和圖表*
+- Reward curves: Shows average rewards obtained per episode
+- Loss curves: Shows how the network training loss changes
+- Priority distribution: Shows the distribution of priorities in the experience replay
+- Exploration rate curve: Shows how ε value changes over time
 
-## Prioritized Experience Replay Algorithm
+## 🔍 Algorithm Details (算法細節)
 
-Prioritized Experience Replay is an improved experience replay technique that assigns higher sampling probabilities to more valuable experiences. The method is based on the following key ideas:
+### SumTree Data Structure
 
-1. **Priority Calculation**:
-   - Using absolute TD-error as priority: `p_i = |δ_i|^α + ε`
-   - Where `α` controls priority strength and `ε` ensures non-zero probability
+The implemented SumTree has the following main operations:
+- `add`: Add new experience with its priority
+- `update_priority`: Update the priority of an experience
+- `get_experience_by_priority`: Retrieve experience based on priority value
 
-2. **Efficient Sampling**:
-   - Using SumTree data structure for O(log n) priority-based sampling
-   - Dividing total priority into B segments, sampling from each segment
+### Prioritized Experience Replay Mechanism
 
-3. **Importance Sampling**:
-   - Using importance sampling weights to correct priority-induced bias: `w_i = (N · P(i))^(-β)`
-   - `β` gradually increases from initial value to 1, balancing early exploration and later convergence
+The PER memory implements:
+- Priority calculation based on TD-errors
+- Computation and proper application of importance sampling weights
+- Linear annealing strategy for β value
+- Efficient batch sampling
 
-*優先經驗回放算法：優先級計算、高效抽樣、重要性採樣*
+## 🤝 Contributing (貢獻)
 
-## Experimental Results
+Contributions and improvements are welcome! If you're interested in improving this project, please follow these steps:
 
-Prioritized Experience Replay significantly improves DQN's learning efficiency on Atari Ice Hockey, demonstrating:
+1. Fork the repository
+2. Create a new branch for your feature (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-- **Faster Convergence** - PER typically reaches higher rewards faster than standard DQN
-- **More Stable Learning Curves** - Reduced fluctuations during training
-- **Better Final Performance** - Achieves better results with the same number of training steps
+Please ensure your code follows the project's coding style and includes appropriate tests.
 
-*實驗結果：更快的收斂速度、更穩定的學習曲線、更好的最終表現*
+貢獻和改進是受歡迎的！如果您對改進此專案感興趣，請按照以下步驟操作：
 
-## Acknowledgements
+1. Fork 此存儲庫
+2. 為您的功能創建一個新分支 (`git checkout -b feature/amazing-feature`)
+3. 提交您的更改 (`git commit -m '添加一些令人驚嘆的功能'`)
+4. 推送到分支 (`git push origin feature/amazing-feature`)
+5. 打開一個拉取請求
 
-- DeepMind's DQN paper: [Human-level control through deep reinforcement learning](https://www.nature.com/articles/nature14236)
-- PER paper: [Prioritized Experience Replay](https://arxiv.org/abs/1511.05952) (Schaul et al., 2015)
-- Gymnasium team for the Atari environments
+請確保您的代碼遵循項目的編碼風格並包含適當的測試。
 
-*致謝：DeepMind 的 DQN 論文、PER 論文、Gymnasium 團隊*
+## 📄 License (許可證)
 
-## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-MIT License
+本專案採用 MIT 許可證 - 詳情請參閱 [LICENSE](LICENSE) 文件。
 
-## Contact
+## 👨‍💻 Author (作者)
 
-For any questions, please create an issue or contact me via email.
+Your Name - [@yourgithub](https://github.com/yourgithub)
 
-*聯繫方式：如有任何問題，請創建 issue 或通過電子郵件聯繫我。*
+## 🙏 Acknowledgements (致謝)
+
+- This project is based on the [DQN paper](https://www.nature.com/articles/nature14236) by DeepMind and the [PER paper](https://arxiv.org/abs/1511.05952) by Google DeepMind
+- Uses Atari game environments provided by [OpenAI Gymnasium](https://gymnasium.farama.org/)
+- Special thanks to all researchers and developers in the reinforcement learning community
+
+## 📊 Project Status (專案狀態)
+
+This project is currently in active development. Core features are implemented and working, but optimizations and additional features are planned.
+
+目前該專案正在積極開發中。核心功能已經實現並正常運作，但計劃進行優化和添加其他功能。

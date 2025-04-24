@@ -1,447 +1,446 @@
 """
-Training script for DQN with Prioritized Experience Replay on Atari Ice Hockey.
+Training script for DQN with Prioritized Experience Replay.
 
-This script performs the main training loop for the DQN agent with PER,
-handling environment interactions, neural network updates, and logging.
+This script handles the complete training process for a DQN agent with 
+Prioritized Experience Replay on Atari games. It manages environment setup,
+agent training, evaluation, checkpointing, and visualization.
 
-用於 Atari 冰球遊戲的 DQN 優先經驗回放訓練腳本。
+DQN 優先經驗回放的訓練腳本。
 
-此腳本執行 DQN 智能體的主要訓練循環，處理環境交互、神經網絡更新和日誌記錄。
-
-Pseudocode for DQN with PER Training Loop:
-1. Initialize environment and agent
-   - Create environment with appropriate wrappers
-   - Initialize DQN agent with primary and target networks
-   - Set up Prioritized Experience Replay memory
-
-2. Training loop (for each episode):
-   a. Reset environment to initial state
-   
-   b. For each step in episode:
-      i. Select action using ε-greedy policy
-      ii. Execute action, observe reward and next state
-      iii. Store transition in replay memory
-      iv. Optimize model if enough samples are collected
-      v. Update target network periodically
-   
-   c. Evaluate agent performance periodically
-   d. Save checkpoints and log statistics
+此腳本處理 DQN 智能體在 Atari 遊戲上使用優先經驗回放的完整訓練過程。
+它管理環境設置、智能體訓練、評估、檢查點保存和可視化。
 """
 
 import os
+import sys
+import time
+import json
 import argparse
+import random
 import numpy as np
 import torch
-import gymnasium as gym
+import signal
+import psutil
 from datetime import datetime
-import time
-import sys
-import gc 
-import psutil 
 
+# Add parent directory to path to import config.py
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
-from src.environment import make_atari_env
-from src.agent import DQNAgent
-from src.utils.device_utils import get_device, get_system_info
-from src.utils.logger import Logger
-from src.utils.visualization import save_training_plots
 
+from src.env_wrappers import make_atari_env
+from src.dqn_agent import DQNAgent
+from src.logger import Logger
+from src.visualization import Visualizer
+from src.device_utils import get_device, get_system_info
 
-def parse_args():
+# Global variables for interrupt handling
+global agent, logger, model_dir, visualizer
+agent = None
+logger = None
+model_dir = None
+visualizer = None
+
+def parse_arguments():
     """
-    Parse command line arguments.
+    Parse command line arguments for training configuration.
     
-    解析命令行參數。
+    解析命令行參數設置訓練配置
+    
+    Returns:
+        argparse.Namespace: The parsed arguments
     """
-    parser = argparse.ArgumentParser(description="Train DQN with PER on Atari Ice Hockey")
-    
-    parser.add_argument("--episodes", type=int, default=config.TRAINING_EPISODES,
-                        help="Number of training episodes")
-    parser.add_argument("--use-per", type=bool, default=config.USE_PER,
-                        help="Whether to use Prioritized Experience Replay")
-    parser.add_argument("--alpha", type=float, default=config.ALPHA,
-                        help="Priority exponent for PER")
-    parser.add_argument("--beta", type=float, default=config.BETA_START,
-                        help="Initial importance sampling weight for PER")
-    parser.add_argument("--render", action="store_true",
-                        help="Render the environment during training")
-    parser.add_argument("--eval-frequency", type=int, default=config.EVAL_FREQUENCY,
-                        help="How often to evaluate the agent")
-    parser.add_argument("--eval-episodes", type=int, default=config.EVAL_EPISODES,
-                        help="Number of episodes for evaluation")
-    parser.add_argument("--save-dir", type=str, default=config.CHECKPOINT_DIR,
-                        help="Directory to save model checkpoints")
-    parser.add_argument("--cpu", action="store_true",
-                        help="Force using CPU even if GPU is available")
-    parser.add_argument("--resume", type=str, default=None,
-                        help="Path to checkpoint file to resume training from")
-    parser.add_argument("--start-episode", type=int, default=1,
-                        help="Episode to start from when resuming training")
+    parser = argparse.ArgumentParser(description='Train DQN with Prioritized Experience Replay')
+    parser.add_argument('--experiment_name', type=str, default='',
+                        help='Experiment name, auto-generated if empty')
+    parser.add_argument('--env_name', type=str, default=config.ENV_NAME,
+                        help=f'Environment name, default: {config.ENV_NAME}')
+    parser.add_argument('--episodes', type=int, default=config.TRAINING_EPISODES,
+                        help=f'Number of training episodes, default: {config.TRAINING_EPISODES}')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='Random seed, random if not specified')
+    parser.add_argument('--no_per', action='store_true',
+                        help='Disable Prioritized Experience Replay, use standard replay')
+    parser.add_argument('--learning_rate', type=float, default=config.LEARNING_RATE,
+                        help=f'Learning rate, default: {config.LEARNING_RATE}')
+    parser.add_argument('--difficulty', type=int, default=config.DIFFICULTY, choices=range(5),
+                        help=f'Game difficulty level (0-4, where 0 is easiest), default: {config.DIFFICULTY}')
     
     return parser.parse_args()
 
-
-def create_directories():
-    """Create necessary directories for saving results."""
-    os.makedirs(config.RESULT_DIR, exist_ok=True)  # Create main result directory first
-    os.makedirs(config.LOG_DIR, exist_ok=True)
-    os.makedirs(config.CHECKPOINT_DIR, exist_ok=True)
-    os.makedirs(config.PLOT_DIR, exist_ok=True)
-
-
-def evaluate_agent(agent, env, num_episodes=10):
+def train_one_episode(env, agent, logger, episode_num, total_steps):
     """
-    Evaluate the agent performance over several episodes.
+    Run a single training episode.
+    
+    執行單個訓練回合
     
     Args:
-        agent: The DQN agent
-        env: The environment
+        env: Game environment
+        agent: DQN agent
+        logger: Training logger
+        episode_num: Current episode number
+        total_steps: Cumulative training steps
+    
+    Returns:
+        dict: Episode statistics
+        int: Number of steps taken in this episode
+    """
+    # Record episode start
+    logger.log_episode_start(episode_num)
+    
+    # Reset environment
+    obs, info = env.reset()
+    done = False
+    episode_reward = 0
+    episode_losses = []
+    step_count = 0
+    
+    # Episode loop
+    while not done:
+        # Select action
+        action = agent.select_action(obs)
+        
+        # Execute action
+        next_obs, reward, terminated, truncated, info = env.step(action)
+        done = terminated or truncated
+        
+        # Store experience
+        agent.store_transition(obs, action, reward, next_obs, done)
+        
+        # Learn
+        if total_steps >= config.LEARNING_STARTS and total_steps % config.UPDATE_FREQUENCY == 0:
+            loss = agent.optimize_model(logger)
+            if loss is not None:
+                episode_losses.append(loss)
+        
+        # Update state
+        obs = next_obs
+        episode_reward += reward
+        step_count += 1
+        total_steps += 1
+        
+        # Record epsilon change (every 1000 steps)
+        if total_steps % 1000 == 0:
+            logger.log_epsilon(total_steps, agent.epsilon)
+        
+        # Update target network (at specified frequency)
+        if total_steps % config.TARGET_UPDATE_FREQUENCY == 0:
+            agent.target_network.load_state_dict(agent.policy_network.state_dict())
+    
+    # Record episode end and statistics
+    logger.log_episode_end(
+        episode_num=episode_num,
+        total_reward=episode_reward,
+        steps=step_count,
+        avg_loss=np.mean(episode_losses) if episode_losses else None,
+        epsilon=agent.epsilon
+    )
+    
+    # Return episode statistics and step count
+    return {
+        'reward': episode_reward,
+        'steps': step_count,
+        'avg_loss': np.mean(episode_losses) if episode_losses else None,
+        'epsilon': agent.epsilon
+    }, step_count
+
+def evaluate_agent(env, agent, logger, episode_num, num_episodes=config.EVAL_EPISODES):
+    """
+    Evaluate agent performance.
+    
+    評估智能體的性能
+    
+    Args:
+        env: Game environment
+        agent: DQN agent
+        logger: Training logger
+        episode_num: Current training episode number
         num_episodes: Number of evaluation episodes
     
     Returns:
-        tuple: (average_reward, episode_rewards, episode_lengths)
-    
-    評估智能體在多個回合中的表現。
-    
-    參數：
-        agent: DQN 智能體
-        env: 環境
-        num_episodes: 評估回合數
-        
-    返回：
-        tuple: (平均獎勵, 回合獎勵列表, 回合長度列表)
+        float: Average reward across evaluation episodes
     """
-    print(f"\nEvaluating agent for {num_episodes} episodes...")
-    episode_rewards = []
-    episode_lengths = []
+    logger.log_text(f"Starting evaluation (training episode {episode_num})")
     
-    for i in range(num_episodes):
-        state, _ = env.reset()
-        episode_reward = 0
-        episode_length = 0
+    # Create evaluation environment
+    eval_env = make_atari_env(env_name=config.ENV_NAME, training=False)
+    
+    # Temporarily switch to evaluation mode
+    agent.set_evaluation_mode(True)
+    
+    eval_rewards = []
+    for eval_episode in range(1, num_episodes + 1):
+        obs, info = eval_env.reset()
         done = False
-        truncated = False
+        episode_reward = 0
         
-        while not (done or truncated):
-            # Select action using greedy policy (no exploration)
-            action = agent.select_action(state, evaluate=True)
-            
-            # Take action in environment
-            next_state, reward, done, truncated, _ = env.step(action)
-            
-            # Update state and statistics
-            state = next_state
+        while not done:
+            action = agent.select_action(obs)
+            obs, reward, terminated, truncated, info = eval_env.step(action)
+            done = terminated or truncated
             episode_reward += reward
-            episode_length += 1
         
-        episode_rewards.append(episode_reward)
-        episode_lengths.append(episode_length)
-        print(f"Episode {i+1}/{num_episodes}: Reward = {episode_reward}, Length = {episode_length}")
+        eval_rewards.append(episode_reward)
     
-    avg_reward = np.mean(episode_rewards)
-    print(f"Evaluation complete. Average reward: {avg_reward:.2f}")
+    # Restore training mode
+    agent.set_evaluation_mode(False)
     
-    return avg_reward, episode_rewards, episode_lengths
-
-
-def train(args):
-    """
-    Main training function.
+    # Calculate evaluation results
+    mean_reward = np.mean(eval_rewards)
+    std_reward = np.std(eval_rewards)
     
-    Args:
-        args: Command line arguments
-        
-    主訓練函數。
-    
-    參數：
-        args: 命令行參數
-    """
-    # Print system information
-    system_info = get_system_info()
-    print("System Information:")
-    print(f"OS: {system_info['os']} {system_info['os_version']}")
-    print(f"CPU: {system_info['cpu_type']} ({system_info['cpu_count']} cores)")
-    print(f"PyTorch: {system_info['torch_version']}")
-    
-    if system_info.get('cuda_available', False) and not args.cpu:
-        print(f"GPU: {system_info.get('gpu_name', 'Unknown')} ({system_info.get('gpu_memory_gb', 'Unknown')} GB)")
-    elif system_info.get('mps_available', False) and not args.cpu:
-        print("GPU: Apple Silicon (Metal)")
-    else:
-        print("GPU: None detected, using CPU only")
-    print("-" * 40)
-    
-    # Set up device (CPU or GPU)
-    if args.cpu:
-        device = torch.device("cpu")
-        config.AUTO_DETECT_DEVICE = False
-        print("Forcing CPU usage as specified")
-    else:
-        device = get_device()
-    
-    # Create training environment
-    render_mode = "human" if args.render else None
-    env = make_atari_env(render_mode=render_mode)
-    print(f"Environment: {config.ENV_NAME}")
-    print(f"Observation space: {env.observation_space}")
-    print(f"Action space: {env.action_space}")
-    
-    # Create evaluation environment (no rendering for speed)
-    eval_env = make_atari_env(render_mode=None)
-    
-    # Initialize DQN agent
-    agent = DQNAgent(device=device, use_per=args.use_per)
-    
-    # Variables for training loop (訓練循環變量)
-    episode_count = 0
-    total_steps = 0
-    best_eval_reward = float('-inf')
-    
-    # Initialize start_episode (初始化起始回合)
-    start_episode = (args.start_episode + 1) if args.resume else 1
-    
-    # Memory management variables (記憶體管理變量)
-    last_memory_check = time.time()
-    memory_check_interval = config.MEMORY_CHECK_INTERVAL  # Check interval (檢查間隔)
-    memory_threshold_percent = config.MEMORY_THRESHOLD_PERCENT  # Memory threshold (記憶體閾值)
-    peak_memory_usage = 0
-    
-    # Resume training if checkpoint provided
-    if args.resume:
-        if os.path.isfile(args.resume):
-            print(f"Loading checkpoint from {args.resume}...")
-            checkpoint = agent.load(args.resume)
-            if isinstance(checkpoint, dict) and 'total_steps' in checkpoint:
-                total_steps = checkpoint['total_steps']
-                best_eval_reward = checkpoint.get('best_eval_reward', float('-inf'))
-                print(f"Resumed from step {total_steps} with best reward {best_eval_reward:.2f}")
-            else:
-                print("Loaded model weights only, no training statistics available")
-        else:
-            print(f"Warning: Checkpoint file {args.resume} not found. Starting training from scratch.")
-    else:
-        print("Starting new training run")
-    
-    # Set up logger
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    experiment_name = f"dqn_{'per' if args.use_per else 'uniform'}_{timestamp}"
-    if args.resume:
-        # If resuming, try to use the same experiment name to continue the logs
-        base_name = os.path.basename(args.resume).split('_ep')[0]
-        if base_name.startswith("dqn_"):
-            experiment_name = base_name
-            
-    logger = Logger(log_dir=config.LOG_DIR, experiment_name=experiment_name)
-    
-    # Update training progress before starting the training loop (在開始訓練循環前更新恢復信息)
-    logger.update_training_progress(
-        episode=start_episode-1, 
-        total_steps=total_steps, 
-        best_reward=best_eval_reward
+    # Log evaluation results
+    logger.log_text(
+        f"Evaluation results (training episode {episode_num}): "
+        f"Mean reward = {mean_reward:.2f} ± {std_reward:.2f}, "
+        f"Min/Max = {np.min(eval_rewards):.2f}/{np.max(eval_rewards):.2f}"
     )
     
-    # Training loop - main algorithm
-    print("\nStarting training...\n")
-    # Variables to track training progress
-    training_start_time = time.time()
-    progress_update_frequency = 10  # Update progress every 10 episodes
-
-    try:
-        for episode in range(start_episode, args.episodes + 1):
-            # 2a. Reset environment to initial state (重置環境到初始狀態)
-            episode_count = episode
-            state, _ = env.reset()
-            episode_reward = 0
-            episode_length = 0
-            done = False
-            truncated = False
-            
-            # Calculate and display overall progress percentage (計算並顯示整體進度百分比)
-            progress_pct = (episode - start_episode) / (args.episodes - start_episode + 1) * 100
-            elapsed_time = time.time() - training_start_time
-            if episode == start_episode or episode % progress_update_frequency == 0:
-                est_total_time = elapsed_time / max(0.001, (episode - start_episode)) * (args.episodes - start_episode + 1)
-                est_remaining = max(0, est_total_time - elapsed_time)
-                hours, remainder = divmod(est_remaining, 3600)
-                minutes, seconds = divmod(remainder, 60)
-                print(f"\rOverall Progress: {progress_pct:.1f}% | Est. remaining: {int(hours)}h {int(minutes)}m {int(seconds)}s", 
-                      end="", flush=True)
-                print()  # Add line break to separate progress from episode output (添加換行以分隔進度和回合輸出)
-            
-            # 2b. For each step in episode: (對於回合中的每一步:)
-            while not (done or truncated):
-                # 2b-i. Select action using ε-greedy policy (使用ε-greedy策略選擇動作)
-                action = agent.select_action(state)
-                
-                # 2b-ii. Execute action, observe reward and next state (執行動作，觀察獎勵和下一個狀態)
-                next_state, reward, done, truncated, _ = env.step(action)
-                
-                # 2b-iii. Store transition in replay memory (將轉換存儲到回放記憶體)
-                agent.store_transition(state, action, reward, next_state, done)
-                
-                # 2b-iv. Optimize model if enough samples are collected (如果收集了足夠的樣本，優化模型)
-                state = next_state
-                episode_reward += reward
-                episode_length += 1
-                total_steps += 1
-                
-                if total_steps % config.UPDATE_FREQUENCY == 0 and total_steps >= config.LEARNING_STARTS:
-                    loss = agent.optimize_model()
-                    
-                    # Log training step (記錄訓練步驟)
-                    logger.log_training_step(total_steps, loss)
-                
-                # 2b-v. Update target network periodically (定期更新目標網絡)
-                if agent.should_update_target_network():
-                    agent.update_target_network()
-                    print(f"Updated target network at step {agent.steps_done}")
-                
-                # Log priority distribution occasionally (偶爾記錄優先級分佈)
-                if args.use_per and total_steps % 10000 == 0:
-                    priorities = agent.memory.tree.get_leaf_values()
-                    logger.log_priorities(priorities)
-            
-            # Memory usage check and cleanup (記憶體使用檢查和清理)
-            current_time = time.time()
-            if current_time - last_memory_check > memory_check_interval:
-                # 獲取當前記憶體使用情況
-                process = psutil.Process(os.getpid())
-                current_memory = process.memory_info().rss / 1024 / 1024  # MB
-                
-                # 獲取系統總記憶體
-                system_memory = psutil.virtual_memory()
-                total_memory = system_memory.total / 1024 / 1024  # MB
-                
-                # 計算進程記憶體使用百分比
-                memory_percent = system_memory.percent
-                process_memory_percent = (current_memory / total_memory) * 100
-                
-                # 更新峰值記憶體使用
-                if current_memory > peak_memory_usage:
-                    peak_memory_usage = current_memory
-                
-                print(f"\nMemory check: Process using {current_memory:.1f}MB ({process_memory_percent:.1f}%), "
-                      f"System memory: {memory_percent:.1f}% used.")
-                
-                # 如果記憶體使用率超過閾值，執行清理
-                if memory_percent > memory_threshold_percent or process_memory_percent > memory_threshold_percent / 2:
-                    # 強制進行垃圾回收
-                    gc.collect()
-                    
-                    # 清空PyTorch的CUDA快取（如果使用）
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    
-                    # 清空MPS快取（如果在Apple Silicon上）
-                    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-                        # MPS沒有直接的清除函數，但可以釋放一些不使用的變數
-                        torch.mps.empty_cache()
-                    
-                    # 記錄記憶體情況
-                    post_cleanup_memory = process.memory_info().rss / 1024 / 1024  # MB
-                    memory_freed = max(0, current_memory - post_cleanup_memory)
-                    
-                    print(f"Memory cleanup performed: {memory_freed:.1f}MB freed. "
-                          f"Current usage: {post_cleanup_memory:.1f}MB, Peak: {peak_memory_usage:.1f}MB")
-                    
-                last_memory_check = current_time
-            
-            # Update recovery information (更新恢復信息)
-            logger.update_training_progress(episode, total_steps, best_eval_reward)
-            
-            # 2c. Evaluate agent performance periodically (定期評估智能體性能)
-            # Log episode statistics (記錄回合統計數據)
-            epsilon = max(config.EPSILON_END, config.EPSILON_START - 
-                          (config.EPSILON_START - config.EPSILON_END) * 
-                          min(1.0, agent.steps_done / config.EPSILON_DECAY))
-            logger.log_episode(episode, episode_reward, episode_length, epsilon)
-            
-            # Evaluate agent periodically (定期評估智能體)
-            if episode % args.eval_frequency == 0:
-                avg_reward, eval_rewards, eval_lengths = evaluate_agent(
-                    agent, eval_env, num_episodes=args.eval_episodes
-                )
-                logger.log_evaluation(episode, eval_rewards, eval_lengths)
-                
-                # Save best model (保存最佳模型)
-                if avg_reward > best_eval_reward:
-                    best_eval_reward = avg_reward
-                    model_path = os.path.join(args.save_dir, f"{experiment_name}_best.pth")
-                    agent.save(model_path)
-                    print(f"New best model saved with reward: {best_eval_reward:.2f}")
-            
-            # 2d. Save checkpoints and log statistics (保存檢查點和記錄統計數據)
-            if episode % config.SAVE_FREQUENCY == 0:
-                checkpoint_path = os.path.join(args.save_dir, f"{experiment_name}_ep{episode}.pth")
-                agent.save(checkpoint_path)
-                print(f"Checkpoint saved at episode {episode}")
-                
-                # Also save current statistics and generate plots (同時保存當前統計數據和生成圖表)
-                logger.save_data()  # save_data() 會同時保存恢復信息，不需要再調用
-                save_training_plots(logger.get_stats(), run_name=experiment_name, output_dir=config.PLOT_DIR)
+    # Close evaluation environment
+    eval_env.close()
     
-    except KeyboardInterrupt:
-        print("\n\nTraining interrupted by user. Saving final state...")
-    except Exception as e:
-        print(f"\n\nError occurred during training: {e}")
-        import traceback
-        traceback.print_exc()
-        print("Attempting to save current state before exiting...")
-    finally:
-        # Final memory usage report (最終記憶體使用情況報告)
-        if 'process' in locals():
-            final_memory = process.memory_info().rss / 1024 / 1024  # MB
-            print(f"\nFinal memory usage: {final_memory:.1f}MB, Peak: {peak_memory_usage:.1f}MB")
-        
-        # Always execute cleanup and save, even if an error occurs
-        print("\nSaving final model and statistics...")
-        
-        # Save final model
-        final_path = os.path.join(args.save_dir, f"{experiment_name}_final.pth")
-        try:
-            # Save with additional training statistics (保存附加訓練統計數據)
-            agent.save(final_path, {
-                'total_steps': total_steps,
-                'best_eval_reward': best_eval_reward,
-                'episode_count': episode_count
-            })
-            print(f"Final model saved to {final_path}")
-            
-            # Save statistics and generate plots (保存統計數據和生成圖表)
-            logger.save_data()
-            results_dir = save_training_plots(logger.get_stats(), run_name=experiment_name, output_dir=config.PLOT_DIR)
-            
-            print("\nTraining summary:")
-            print(f"Trained for {episode_count} episodes, {total_steps} total steps")
-            if best_eval_reward > float('-inf'):
-                print(f"Best evaluation reward: {best_eval_reward:.2f}")
-            else:
-                print("No evaluation was performed during this run")
-            print(f"Results and plots saved to {results_dir}")
-        except Exception as e:
-            print(f"Error during final saving: {e}")
-            print("Training data may be incomplete.")
-        
-        # Clean up
-        try:
-            env.close()
-            eval_env.close()
-        except:
-            pass
-            
-        # Force flush stdout to ensure all messages are displayed
-        sys.stdout.flush()
+    return mean_reward
 
-
-if __name__ == "__main__":
-    # Set up directories
-    create_directories()
+def check_resources():
+    """
+    Check system resource usage.
     
-    # Initialize device (it will be obtained when needed, not storing in config)
-    from src.utils.device_utils import get_device
+    檢查系統資源使用情況
+    
+    Returns:
+        dict: Resource usage statistics
+    """
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    memory_percent = process.memory_percent()
+    
+    resources = {
+        'memory_bytes': memory_info.rss,
+        'memory_percent': memory_percent,
+        'cpu_percent': process.cpu_percent(interval=0.1)
+    }
+    
+    return resources
+
+def handle_interrupt(signum, frame):
+    """
+    Handle interrupt signal (Ctrl+C), save current state and generate visualizations.
+    
+    處理中斷信號 (Ctrl+C)，保存當前狀態並生成可視化
+    
+    Args:
+        signum: Signal number
+        frame: Current stack frame
+    """
+    global agent, logger, model_dir, visualizer
+    
+    if logger is not None:
+        logger.log_text("\nTraining interrupted, saving state...")
+        
+        # Save model and training state
+        if agent is not None and model_dir is not None:
+            interrupt_model_path = os.path.join(model_dir, "interrupted_model.pt")
+            agent.save_model(interrupt_model_path)
+            logger.log_text(f"Model saved to: {interrupt_model_path}")
+        
+        logger.save_training_state()
+        logger.log_text("Training state saved")
+        
+        # Generate visualizations
+        logger.log_text("Generating visualizations...")
+        if visualizer is None:
+            visualizer = Visualizer(logger_instance=logger)
+        plots = visualizer.generate_all_plots(show=False)
+        logger.log_text(f"Generated {len(plots)} visualization plots")
+        logger.log_text("Training safely interrupted. Use resume.py to continue training.")
+    
+    # Normal exit
+    sys.exit(0)
+
+def main():
+    """
+    Main training function that coordinates the entire training process.
+    
+    主訓練函數，協調整個訓練過程
+    """
+    global agent, logger, model_dir, visualizer
     
     # Parse command line arguments
-    args = parse_args()
+    args = parse_arguments()
+    
+    # Set experiment name
+    experiment_name = args.experiment_name
+    if not experiment_name:
+        experiment_name = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    # Set random seed
+    if args.seed is not None:
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed(args.seed) if torch.cuda.is_available() else None
+    
+    # Detect device
+    device = get_device()
+    
+    # Create directories
+    for directory in [config.MODEL_DIR, config.LOG_DIR, config.DATA_DIR, config.PLOT_DIR]:
+        os.makedirs(directory, exist_ok=True)
+    
+    model_dir = os.path.join(config.MODEL_DIR, experiment_name)
+    os.makedirs(model_dir, exist_ok=True)
+    
+    # Save experiment configuration
+    config_path = os.path.join(model_dir, "experiment_config.json")
+    with open(config_path, 'w') as f:
+        config_data = {
+            "experiment_name": experiment_name,
+            "env_name": args.env_name,
+            "episodes": args.episodes,
+            "seed": args.seed,
+            "use_per": not args.no_per,
+            "learning_rate": args.learning_rate,
+            "difficulty": args.difficulty,
+            "device": str(device),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        json.dump(config_data, f, indent=4)
+    
+    # Initialize environment
+    env = make_atari_env(env_name=args.env_name, training=True)
+    
+    # Initialize agent
+    agent = DQNAgent(
+        state_shape=(config.FRAME_STACK, config.FRAME_HEIGHT, config.FRAME_WIDTH),
+        action_space_size=env.action_space.n,
+        learning_rate=args.learning_rate,
+        use_per=not args.no_per
+    )
+    
+    # Initialize logger
+    logger = Logger(experiment_name=experiment_name)
+    
+    # Log training start
+    logger.log_text(f"Starting training experiment: {experiment_name}")
+    logger.log_text(f"Environment: {args.env_name}")
+    logger.log_text(f"Device: {device}")
+    logger.log_text(f"Using PER: {not args.no_per}")
+    logger.log_text(f"System info: {get_system_info()}")
+    
+    # Initialize training variables
+    total_episodes = args.episodes
+    total_steps = 0
+    best_eval_reward = float('-inf')
+    start_time = time.time()
+    
+    try:
+        # Main training loop
+        for episode in range(1, total_episodes + 1):
+            # Train one episode
+            episode_stats, steps_taken = train_one_episode(env, agent, logger, episode, total_steps)
+            total_steps += steps_taken
+            
+            # Periodically output training progress
+            if episode % config.LOGGER_DETAILED_INTERVAL == 0:
+                elapsed_time = time.time() - start_time
+                hrs, rem = divmod(elapsed_time, 3600)
+                mins, secs = divmod(rem, 60)
+                
+                logger.log_text(
+                    f"Episode: {episode}/{total_episodes} "
+                    f"({episode/total_episodes*100:.1f}%) | "
+                    f"Reward: {episode_stats['reward']:.2f} | "
+                    f"Steps: {episode_stats['steps']} | "
+                    f"Epsilon: {episode_stats['epsilon']:.4f} | "
+                    f"Elapsed time: {int(hrs):02d}:{int(mins):02d}:{int(secs):02d}"
+                )
+            
+            # Periodically evaluate
+            if episode % config.EVAL_FREQUENCY == 0:
+                eval_reward = evaluate_agent(env, agent, logger, episode)
+                
+                # Save best model
+                if eval_reward > best_eval_reward:
+                    best_eval_reward = eval_reward
+                    best_model_path = os.path.join(model_dir, "best_model.pt")
+                    agent.save_model(best_model_path)
+                    logger.log_text(f"New best model! Mean reward: {best_eval_reward:.2f}")
+            
+            # Periodically save checkpoints
+            if episode % config.SAVE_FREQUENCY == 0:
+                checkpoint_path = os.path.join(model_dir, f"checkpoint_{episode}.pt")
+                agent.save_model(checkpoint_path, episode=episode)
+                logger.save_training_state()
+                logger.log_text(f"Checkpoint saved (episode {episode})")
+            
+            # Periodically check resources
+            if episode % 10 == 0:
+                resources = check_resources()
+                if resources['memory_percent'] > config.MEMORY_THRESHOLD_PERCENT:
+                    logger.log_text(f"Warning: Memory usage {resources['memory_percent']:.1f}% exceeds threshold")
+                    logger.limit_memory_usage()
+        
+        # Training completed
+        logger.log_text("\nTraining completed!")
+        
+        # Save final model
+        final_model_path = os.path.join(model_dir, "final_model.pt")
+        agent.save_model(final_model_path, episode=total_episodes)
+        logger.log_text(f"Final model saved to: {final_model_path}")
+        
+        # Save training state
+        logger.save_training_state()
+        
+        # Log training summary
+        total_time = time.time() - start_time
+        hrs, rem = divmod(total_time, 3600)
+        mins, secs = divmod(rem, 60)
+        
+        logger.log_text(
+            f"Training summary:\n"
+            f"- Total episodes: {total_episodes}\n"
+            f"- Total steps: {total_steps}\n"
+            f"- Best evaluation reward: {best_eval_reward:.2f}\n"
+            f"- Total training time: {int(hrs):02d}:{int(mins):02d}:{int(secs):02d}"
+        )
+        
+        # Generate final visualizations
+        logger.log_text("Generating training visualizations...")
+        visualizer = Visualizer(logger_instance=logger)
+        plots = visualizer.generate_all_plots(show=False)
+        logger.log_text(f"Generated {len(plots)} visualization plots")
+        
+    except Exception as e:
+        # Exception handling
+        logger.log_text(f"\nException occurred during training: {str(e)}")
+        
+        # Save model at exception
+        exception_model_path = os.path.join(model_dir, "exception_model.pt")
+        agent.save_model(exception_model_path)
+        logger.log_text(f"Model at exception saved to: {exception_model_path}")
+        
+        # Save training state
+        logger.save_training_state()
+        
+        # Generate visualizations at exception
+        logger.log_text("Generating visualizations...")
+        visualizer = Visualizer(logger_instance=logger)
+        visualizer.generate_all_plots(show=False)
+        
+        # Re-raise exception
+        raise
+        
+    finally:
+        # Close environment
+        if 'env' in locals():
+            env.close()
+        
+        # Output completion information
+        if logger is not None:
+            logger.log_text("Training program exited")
+
+if __name__ == "__main__":
+    # Register signal handler
+    signal.signal(signal.SIGINT, handle_interrupt)
     
     # Start training
-    train(args)
+    main()

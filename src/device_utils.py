@@ -1,10 +1,10 @@
 """
-Device and system utilities for DQN with PER.
+Device and system utilities for DQN with Prioritized Experience Replay.
 
 This module provides functions for detecting available computation devices
 (CPU, CUDA, MPS) and retrieving system information.
 
-DQN 優先經驗回放的設備和系統工具。
+DQN 與優先經驗回放的設備和系統工具。
 
 此模組提供用於檢測可用計算設備（CPU、CUDA、MPS）和獲取系統信息的功能。
 """

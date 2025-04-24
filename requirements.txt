@@ -1,11 +1,14 @@
+# 核心依賴
 torch>=2.0.0
-numpy>=1.22.0
-gymnasium>=0.28.0
-matplotlib>=3.6.0
+gymnasium[atari]>=0.28.1
+numpy>=1.20.0
+matplotlib>=3.5.0
+
+# 工具和輔助庫
 psutil>=5.9.0
-pandas>=1.5.0
-tqdm>=4.64.0
-ale-py>=0.7.5
-tensorboard>=2.10.0
-opencv-python-headless>=4.6.0
-pyyaml>=6.0
+pillow>=9.0.0
+tqdm>=4.65.0
+
+# 可選依賴（開發與測試）
+pytest>=7.0.0
+ipython>=8.0.0

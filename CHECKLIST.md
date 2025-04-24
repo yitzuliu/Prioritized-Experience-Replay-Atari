@@ -51,7 +51,7 @@ Algorithm: Prioritized Experience Replay
 ```
 Algorithm: Deep Q-Network with Prioritized Experience Replay
 1. Initialize:
-   - Primary Q-network Q with random weights θ
+   - Q-network Q with random weights θ
    - Target Q-network Q' with weights θ' = θ
    - Prioritized Experience Replay memory D
    
@@ -98,59 +98,52 @@ Data Structure: SumTree
       - Return index, priority and data at leaf
 ```
 
-*偽代碼：優先經驗回放算法、DQN與PER結合算法、SumTree數據結構*
+## Implementation Details for Our Project
 
-## Detailed Plan and Progress Tracking
+### Core Components
 
-### 1. Basic Architecture Setup
-- [x] Analyze existing file structure
-- [x] Enhance config.py to add PER configuration parameters
-- [x] Design interactions between agent, environment, memory modules
+1. **SumTree (src/sumtree.py)**
+   - Efficient binary tree for priority-based sampling
+   - Key methods:
+     - `_propagate_priority_change`: Updates tree when priority changes
+     - `_find_priority_leaf_index`: Locates leaf based on priority
+     - `add`: Adds new experience with priority
+     - `update_priority`: Updates existing experience priority
+     - `get_experience_by_priority`: Retrieves experience based on sampled priority
 
-### 2. Implement Prioritized Experience Replay Memory
-- [x] Create memory/sumtree.py implementing SumTree data structure
-- [x] Create memory/per_memory.py implementing PER
-- [x] Implement priority calculation and update mechanisms
-- [x] Implement priority-based sampling
-- [x] Implement importance sampling weight calculation
+2. **PER Memory (src/per_memory.py)**
+   - Implements transition storage with prioritized sampling
+   - Manages importance sampling weights with annealing β parameter
+   - Key methods:
+     - `add`: Stores transitions with maximum initial priority
+     - `sample`: Samples batch based on priorities
+     - `update_priorities`: Updates priorities based on new TD errors
+     - `update_beta`: Linearly increases β from β_start to 1.0
 
-### 3. Implement DQN Agent
-- [x] Create agent/q_network.py implementing DQN neural network architecture
-- [x] Create agent/dqn_agent.py implementing DQN agent
-- [x] Integrate PER with DQN
+3. **DQN Agent (src/dqn_agent.py)**
+   - Integrates PER with DQN algorithm
+   - Applies importance sampling weights to loss calculation
+   - Key methods:
+     - `select_action`: Implements ε-greedy policy
+     - `optimize_model`: Performs learning step with PER
 
-### 4. Environment Processing
-- [x] Check and optimize environment wrappers (environment/env_wrappers.py)
-- [x] Ensure game environment is properly configured
+4. **Training Loop (train.py)**
+   - Coordinates training process with appropriate PER integration
+   - Manages logging of PER-specific metrics
 
-### 5. Tools and Utilities
-- [x] Establish utils/ directory for auxiliary functions
-- [x] Implement device detection supporting CPU/GPU/M-series chips
-- [x] Build data collection and visualization tools
+## Hyperparameters for PER
 
-### 6. Training and Evaluation Scripts
-- [x] Create train.py main training script
-- [x] Create evaluate.py evaluation script
-- [x] Implement phased model saving and training restoration functions
+- **α (Alpha)**: 0.6 - Controls how much prioritization is used (0 = uniform, 1 = full prioritization)
+- **β_start (Beta start)**: 0.4 - Initial importance sampling weight
+- **β_frames (Beta frames)**: 1,000,000 - Number of frames over which β is annealed to 1.0
+- **ε (Epsilon for priorities)**: 1e-6 - Small constant added to TD-error to ensure non-zero priority
 
-### 7. Visualization and Analysis
-- [x] Implement training process data recording
-- [x] Implement charts for rewards, losses, priority distributions
-- [x] Build training result analysis tools
+## References
 
-### 8. Documentation and Examples
-- [x] Create detailed README.md file
-- [x] Provide usage examples and running instructions
-- [x] Add performance analysis and result discussion
+1. **Original DQN Paper:**
+   Mnih, V., Kavukcuoglu, K., Silver, D., et al. (2015). "Human-level control through deep reinforcement learning." *Nature*, 518(7540), 529-533.
 
-### 9. Testing and Optimization
-- [x] Conduct complete testing to ensure operation beyond 5,000 steps
-- [x] Optimize memory and computational efficiency
-- [x] Ensure cross-platform compatibility
+2. **Prioritized Experience Replay:**
+   Schaul, T., Quan, J., Antonoglou, I., & Silver, D. (2016). "Prioritized Experience Replay." *International Conference on Learning Representations (ICLR)*.
 
-### 10. GitHub Preparation
-- [x] Create .gitignore file
-- [x] Organize code and documentation
-- [x] Final checks and adjustments
-
-*進度追蹤：基本架構設置、優先經驗回放記憶體實現、DQN智能體實現、環境處理、工具和輔助功能、訓練和評估腳本、可視化和分析、文檔和範例、測試和優化、GitHub準備*
+*偽代碼：優先經驗回放算法、基本DQN與PER結合算法、SumTree數據結構*

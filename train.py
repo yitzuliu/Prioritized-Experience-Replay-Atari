@@ -15,12 +15,12 @@ import os
 import sys
 import time
 import json
-import argparse
+import argparse #parsing command-line arguments in Python scripts. It allows developers to create user-friendly command-line interfaces by defining what arguments the program requires.
 import random
 import numpy as np
 import torch
-import signal
-import psutil
+import signal  #signal module in Python provides mechanisms to use signal handlers in Python. It allows you to set up handlers for various signals, such as SIGINT (Ctrl+C), SIGTERM, etc.
+import psutil #psutil is a cross-platform library for retrieving information on running processes and system utilization (CPU, memory, disks, network, sensors) in Python. It is used to monitor system resources and manage processes.
 from datetime import datetime
 
 # Add parent directory to path to import config.py
@@ -64,6 +64,9 @@ def parse_arguments():
                         help=f'Learning rate, default: {config.LEARNING_RATE}')
     parser.add_argument('--difficulty', type=int, default=config.DIFFICULTY, choices=range(5),
                         help=f'Game difficulty level (0-4, where 0 is easiest), default: {config.DIFFICULTY}')
+    parser.add_argument('--enable_file_logging', action='store_true',
+                        help='Enable file logging, default: disabled')
+    
     
     return parser.parse_args()
 
@@ -272,9 +275,14 @@ def main():
     if not experiment_name:
         experiment_name = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
+    # Override config settings with command line arguments
+    if args.enable_file_logging:
+        config.ENABLE_FILE_LOGGING = True
+        print("File logging enabled through command line argument")
+    
     # Set random seed
     if args.seed is not None:
-        random.seed(args.seed)
+        random.seed(args.seed) 
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
         torch.cuda.manual_seed(args.seed) if torch.cuda.is_available() else None
@@ -290,8 +298,9 @@ def main():
     os.makedirs(model_dir, exist_ok=True)
     
     # Save experiment configuration
-    config_path = os.path.join(model_dir, "experiment_config.json")
-    with open(config_path, 'w') as f:
+    config_path = os.path.join(model_dir, "experiment_config.json") # Create a JSON file named experiment_config.json
+     # whith open(...)as... is a context manager that automatically closes the file after the block is executed
+    with open(config_path, 'w') as f:                       #Open the file in "write mode", f means file
         config_data = {
             "experiment_name": experiment_name,
             "env_name": args.env_name,
@@ -303,7 +312,7 @@ def main():
             "device": str(device),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
-        json.dump(config_data, f, indent=4)
+        json.dump(config_data, f, indent=4) # Save JSON with indentation
     
     # Initialize environment
     env = make_atari_env(env_name=args.env_name, training=True)

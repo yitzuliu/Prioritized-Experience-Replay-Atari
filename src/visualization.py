@@ -269,6 +269,7 @@ class Visualizer:
         self._get_data()
         
         if not self.episode_rewards:
+            print("No reward data available for plotting.")
             return ""
         
         # Set up plot style
@@ -344,6 +345,7 @@ class Visualizer:
         self._get_data()
         
         if not self.episode_losses:
+            print("No loss data available for plotting.")
             return ""
         
         # Set up plot style
@@ -418,6 +420,7 @@ class Visualizer:
         self._get_data()
         
         if not self.epsilon_values:
+            print("No epsilon data available for plotting.")
             return ""
         
         # Set up plot style
@@ -484,6 +487,7 @@ class Visualizer:
         self._get_data()
         
         if not self.beta_values and not self.priority_means:
+            print("No PER metrics data available for plotting.")
             return ""
         
         # Set up plot style
@@ -587,6 +591,7 @@ class Visualizer:
         
         # Check if we have any data
         if not (self.episode_rewards or self.episode_losses or self.epsilon_values or self.beta_values):
+            print("No training metrics data available for overview plotting.")
             return ""
         
         # Set up plot style
@@ -749,38 +754,241 @@ class Visualizer:
             
         return filepath if save else ""
 
-    def generate_all_plots(self, show: bool = False) -> List[str]:
+    def generate_training_config_markdown(self, save=True, show=False) -> str:
         """
-        Generate all available plots.
+        Generate a Markdown document summarizing the training configuration.
+        
+        This function creates a detailed Markdown document with all configuration 
+        parameters used for the training run, organized by category.
         
         Args:
-            show: Whether to display the plots
+            save: Whether to save the Markdown to a file
+            show: Whether to print the Markdown to console
             
         Returns:
-            List[str]: Paths to all generated plot files
+            str: Path to the saved Markdown file, or empty string if not saved
         """
+        import sys
+        import os
+        import inspect
+        import config
+        
+        # Set up consistent file path
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"config_{timestamp}.md"
+        filepath = os.path.join(self.plots_dir, filename)
+        
+        # Get all configuration variables from config.py
+        config_values = {name: value for name, value in vars(config).items() 
+                        if not name.startswith('__') and not inspect.ismodule(value)}
+        
+        # Define categories and their related variables
+        categories = {
+            "Game Environment Settings": [
+                "ENV_NAME", "ACTION_SPACE_SIZE", "DIFFICULTY", 
+                "FRAME_WIDTH", "FRAME_HEIGHT", "FRAME_STACK", "FRAME_SKIP", "NOOP_MAX",
+                "RENDER_MODE", "TRAINING_MODE"
+            ],
+            "Deep Q-Learning Parameters": [
+                "LEARNING_RATE", "GAMMA", "BATCH_SIZE", "MEMORY_CAPACITY",
+                "TARGET_UPDATE_FREQUENCY", "TRAINING_EPISODES", "EPSILON_START",
+                "EPSILON_END", "EPSILON_DECAY", "DEFAULT_EVALUATE_MODE",
+                "LEARNING_STARTS", "UPDATE_FREQUENCY"
+            ],
+            "Prioritized Experience Replay Parameters": [
+                "USE_PER", "ALPHA", "BETA_START", "BETA_FRAMES", "EPSILON_PER",
+                "TREE_CAPACITY", "DEFAULT_NEW_PRIORITY", "PER_LOG_FREQUENCY", "PER_BATCH_SIZE"
+            ],
+            "Neural Network Settings": [
+                "USE_ONE_CONV_LAYER", "USE_TWO_CONV_LAYERS", "USE_THREE_CONV_LAYERS",
+                "CONV1_CHANNELS", "CONV1_KERNEL_SIZE", "CONV1_STRIDE",
+                "CONV2_CHANNELS", "CONV2_KERNEL_SIZE", "CONV2_STRIDE",
+                "CONV3_CHANNELS", "CONV3_KERNEL_SIZE", "CONV3_STRIDE",
+                "FC_SIZE", "GRAD_CLIP_NORM"
+            ],
+            "Evaluation Settings": [
+                "EVAL_EPISODES", "EVAL_FREQUENCY"
+            ],
+            "Logger Settings": [
+                "MEMORY_THRESHOLD_PERCENT", "RESULTS_DIR", "LOG_DIR", "MODEL_DIR", "PLOT_DIR", "DATA_DIR",
+                "ENABLE_FILE_LOGGING", "LOGGER_SAVE_INTERVAL", "LOGGER_MEMORY_WINDOW",
+                "LOGGER_BATCH_SIZE", "LOGGER_DETAILED_INTERVAL", "LOGGER_MAJOR_METRICS",
+                "VISUALIZATION_SAVE_INTERVAL"
+            ]
+        }
+        
+        # Start building the Markdown document
+        markdown = f"# Training Configuration - {self.experiment_name}\n\n"
+        markdown += f"Generated on: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        
+        # Add sections for each category
+        for category, variables in categories.items():
+            markdown += f"## {category}\n\n"
+            markdown += "| Parameter | Value | Description |\n"
+            markdown += "| --- | --- | --- |\n"
+            
+            for var in variables:
+                if var in config_values:
+                    value = config_values[var]
+                    
+                    # Get the variable comments if any exist
+                    var_comments = ""
+                    try:
+                        # Try to find the comment for this variable in config.py source
+                        with open(inspect.getfile(config), 'r', encoding='utf-8') as f:
+                            lines = f.readlines()
+                            for i, line in enumerate(lines):
+                                if f"{var} = " in line or f"{var}=" in line:
+                                    # Look for comments after the variable definition
+                                    comment_parts = line.split('#')
+                                    if len(comment_parts) > 1:
+                                        var_comments = comment_parts[1].strip()
+                                    # Also check for comments on the previous line
+                                    elif i > 0 and '#' in lines[i-1] and not '=' in lines[i-1]:
+                                        var_comments = lines[i-1].split('#')[1].strip()
+                    except Exception as e:
+                        pass
+                    
+                    # Format the value based on its type
+                    if isinstance(value, str):
+                        formatted_value = f"'{value}'"
+                    elif isinstance(value, bool):
+                        formatted_value = str(value)
+                    elif isinstance(value, (int, float)):
+                        formatted_value = str(value)
+                    elif isinstance(value, list):
+                        if len(value) > 5:
+                            formatted_value = f"[{', '.join(str(v) for v in value[:5])}...]"
+                        else:
+                            formatted_value = str(value)
+                    else:
+                        formatted_value = str(value)
+                    
+                    markdown += f"| {var} | {formatted_value} | {var_comments} |\n"
+            
+            markdown += "\n"
+        
+        # Add system info and device information if available
+        try:
+            from src.device_utils import get_system_info, get_device
+            system_info = get_system_info()
+            
+            markdown += "## System Information\n\n"
+            markdown += "| Component | Details |\n"
+            markdown += "| --- | --- |\n"
+            
+            for key, value in system_info.items():
+                markdown += f"| {key.replace('_', ' ').title()} | {value} |\n"
+            
+            # Add specific device information used for training
+            device = get_device()
+            markdown += f"| **Training Device** | {device} |\n"
+            
+            # Add more detailed CUDA information if available
+            if torch.cuda.is_available():
+                markdown += f"| **CUDA Version** | {torch.version.cuda} |\n"
+                markdown += f"| **GPU Count** | {torch.cuda.device_count()} |\n"
+                for i in range(torch.cuda.device_count()):
+                    markdown += f"| **GPU {i} Name** | {torch.cuda.get_device_name(i)} |\n"
+                    markdown += f"| **GPU {i} Memory** | {torch.cuda.get_device_properties(i).total_memory / (1024**3):.2f} GB |\n"
+                    
+            markdown += "\n"
+        except Exception as e:
+            # Add a note about the error, but continue
+            markdown += f"## System Information\n\n"
+            markdown += f"*Error retrieving system information: {str(e)}*\n\n"
+        
+        # Add runtime information
+        import torch
+        markdown += "## Runtime Information\n\n"
+        markdown += "| Component | Details |\n"
+        markdown += "| --- | --- |\n"
+        markdown += f"| PyTorch Version | {torch.__version__} |\n"
+        markdown += f"| Python Version | {sys.version.split()[0]} |\n"
+        
+        # Try to get CUDA information again, in case the previous attempt failed
+        if torch.cuda.is_available():
+            markdown += f"| CUDA Available | Yes |\n"
+            try:
+                markdown += f"| CUDA Version | {torch.version.cuda} |\n"
+            except:
+                markdown += f"| CUDA Version | Unknown |\n"
+        else:
+            markdown += f"| CUDA Available | No |\n"
+        
+        # Check for MPS (Apple Metal) availability
+        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            markdown += f"| MPS (Apple Metal) Available | Yes |\n"
+        else:
+            markdown += f"| MPS (Apple Metal) Available | No |\n"
+        
+        markdown += "\n"
+        
+        # Save the Markdown to a file
+        if save:
+            try:
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(markdown)
+                print(f"Configuration saved to {filepath}")
+            except Exception as e:
+                print(f"Error saving configuration markdown: {str(e)}")
+                return ""
+        
+        # Print to console if requested
+        if show:
+            print(markdown)
+        
+        return filepath if save else ""
+
+    def generate_all_plots(self, show: bool = False) -> List[str]:
+        """Generate all available plots."""
         plot_files = []
         
-        # Generate each type of plot
-        reward_plot = self.plot_rewards(save=True, show=show)
-        if reward_plot:
-            plot_files.append(reward_plot)
+        try:
+            print("Generating reward plot...")
+            reward_plot = self.plot_rewards(save=True, show=show)
+            if reward_plot:
+                plot_files.append(reward_plot)
             
-        loss_plot = self.plot_losses(save=True, show=show)
-        if loss_plot:
-            plot_files.append(loss_plot)
+            print("Generating loss plot...")
+            loss_plot = self.plot_losses(save=True, show=show)
+            if loss_plot:
+                plot_files.append(loss_plot)
             
-        epsilon_plot = self.plot_epsilon(save=True, show=show)
-        if epsilon_plot:
-            plot_files.append(epsilon_plot)
-            
-        per_plot = self.plot_per_metrics(save=True, show=show)
-        if per_plot:
-            plot_files.append(per_plot)
+            # Wrap individual plotting functions in try-except blocks
+            try:
+                print("Generating epsilon plot...")
+                epsilon_plot = self.plot_epsilon(save=True, show=show)
+                if epsilon_plot:
+                    plot_files.append(epsilon_plot)
+            except Exception as e:
+                print(f"Error generating epsilon plot: {str(e)}")
+                            
+            try:
+                print("Generating PER metrics plot...")
+                per_plot = self.plot_per_metrics(save=True, show=show)
+                if per_plot:
+                    plot_files.append(per_plot)
+            except Exception as e:
+                print(f"Error generating PER metrics plot: {str(e)}")
+                            
+            try:
+                print("Generating overview plot...")
+                major_metrics_plot = self.plot_training_overview(save=True, show=show)
+                if major_metrics_plot:
+                    plot_files.append(major_metrics_plot)
+            except Exception as e:
+                print(f"Error generating overview plot: {str(e)}")
+                                
+        except Exception as e:
+            print(f"Error generating plots: {str(e)}")
+            import traceback
+            traceback.print_exc()
         
-        major_metrics_plot = self.plot_training_overview(save=True, show=show)
-        if major_metrics_plot:
-            plot_files.append(major_metrics_plot)
+        if not plot_files:
+            print("No plots were generated. This might be due to missing training data.")
+        else:
+            print(f"Successfully generated {len(plot_files)} plots.")
             
         return plot_files
 
@@ -789,6 +997,8 @@ if __name__ == "__main__":
     # Try to load an experiment if one exists
     results_dir = config.RESULTS_DIR
     data_dir = config.DATA_DIR
+    
+    print(f"Looking for experiments in {data_dir}")
     
     # Check if any experiments exist
     if os.path.exists(data_dir):
@@ -799,13 +1009,16 @@ if __name__ == "__main__":
             # Use the most recent experiment
             experiments.sort()
             latest_experiment = experiments[-1]
+            print(f"Found {len(experiments)} experiments. Using the most recent: {latest_experiment}")
             
             # Create visualizer
             vis = Visualizer(experiment_name=latest_experiment)
             
             # Generate all plots
+            print(f"Generating plots from experiment: {latest_experiment}")
             plot_files = vis.generate_all_plots(show=True)
+            print(f"Generated {len(plot_files)} plots: {plot_files}")
         else:
             print("No experiments found. Run training first to generate data.")
     else:
-        print(f"Data directory {data_dir} not found.")
+        print(f"Data directory {data_dir} not found. Please run training first to generate data.")

@@ -58,17 +58,44 @@ def signal_handler(sig, frame):
     if logger is not None:
         logger.log_text("\nTraining interrupted by user or system signal.")
         
+        # Save model checkpoint at interruption point
+        if agent is not None:
+            try:
+                # Create interruption checkpoint filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                interrupt_path = os.path.join(
+                    config.MODEL_DIR, 
+                    logger.experiment_name, 
+                    f"interrupt_checkpoint_{timestamp}.pt"
+                )
+                
+                # Save the model with metadata about the interruption
+                metadata = {
+                    'interruption_time': timestamp,
+                    'reason': 'User or system interruption',
+                    'training_progress': f"{logger.current_episode}/{config.TRAINING_EPISODES} episodes"
+                }
+                
+                agent.save_model(
+                    path=interrupt_path, 
+                    save_optimizer=True,
+                    include_memory=False,
+                    metadata=metadata
+                )
+                
+                logger.log_text(f"Model checkpoint saved at interruption point: {interrupt_path}")
+            except Exception as e:
+                logger.log_text(f"Error saving model at interruption: {str(e)}")
+        
         # Generate visualizations before exit
         logger.log_text("Generating visualizations of current progress...")
         
         try:
-            if visualizer is None:
-                visualizer = Visualizer(logger_instance=logger)
-            
+            visualizer = Visualizer(logger_instance=logger)
             plots = visualizer.generate_all_plots(show=False)
             logger.log_text(f"Successfully generated {len(plots)} visualization plots at interruption point")
         except Exception as e:
-            logger.log_text(f"Error generating visualizations: {str(e)}")
+                        logger.log_text(f"Error generating visualizations: {str(e)}")
     
     # Close the environment if open
     if env is not None:
@@ -326,6 +353,9 @@ def main():
     # Initialize logger
     logger = Logger(experiment_name=experiment_name)
     
+    #configuration output
+    visualizer.generate_training_config_markdown()
+
     # Log training start
     logger.log_text(f"Starting training experiment: {experiment_name}")
     logger.log_text(f"Environment: {args.env_name}")
@@ -366,14 +396,33 @@ def main():
             # Periodically save visualizations during training
             if episode % config.VISUALIZATION_SAVE_INTERVAL == 0:
                 try:
-                    if visualizer is None:
-                        visualizer = Visualizer(logger_instance=logger)
+                    visualizer = Visualizer(logger_instance=logger)
                     # Create just the overview plot to avoid too many files
                     visualizer.plot_training_overview(save=True, show=False)
                     logger.log_text(f"Saved intermediate visualization at episode {episode}")
                 except Exception as e:
                     logger.log_text(f"Error generating intermediate visualization: {str(e)}")
         
+            # Add periodic checkpoint saving
+            if episode % config.LOGGER_SAVE_INTERVAL == 0:
+                try:
+                    checkpoint_path = os.path.join(
+                        config.MODEL_DIR, 
+                        logger.experiment_name, 
+                        f"checkpoint_{episode}.pt"
+                    )
+                    
+                    agent.save_model(
+                        path=checkpoint_path,
+                        save_optimizer=True,
+                        include_memory=False,
+                        metadata={'checkpoint_episode': episode}
+                    )
+                    
+                    logger.log_text(f"Saved checkpoint at episode {episode}: {checkpoint_path}")
+                except Exception as e:
+                    logger.log_text(f"Error saving checkpoint: {str(e)}")
+            
         # Training completed
         logger.log_text("\nTraining completed successfully!")
         
@@ -403,10 +452,10 @@ def main():
         # Generate visualizations at exception
         logger.log_text("Generating visualizations before exit...")
         try:
-            if visualizer is None:
-                visualizer = Visualizer(logger_instance=logger)
-            visualizer.generate_all_plots(show=False)
-            logger.log_text("Successfully generated visualizations after exception")
+            visualizer = Visualizer(logger_instance=logger)
+            plots = visualizer.generate_all_plots(show=False)
+            logger.log_text(f"Successfully generated {len(plots)} visualization plots at interruption point")
+
         except Exception as viz_error:
             logger.log_text(f"Error generating visualizations: {str(viz_error)}")
         

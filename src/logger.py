@@ -510,7 +510,7 @@ class Logger:
     
     def _batch_write(self):
         """Perform batch writing of accumulated episode data to disk."""
-        if not self.data_buffer or not self.enable_file_logging:
+        if not self.data_buffer:
             return
             
         # Append to episode data file
@@ -527,7 +527,7 @@ class Logger:
     
     def _batch_write_per(self):
         """Perform batch writing of accumulated PER data to disk."""
-        if not self.per_data_buffer or not self.enable_file_logging:
+        if not self.per_data_buffer:
             return
             
         # Append to PER data file

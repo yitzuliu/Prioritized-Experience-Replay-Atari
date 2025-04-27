@@ -85,18 +85,22 @@ class PERMemory:
     def update_beta(self, frame_idx):
         """
         Update the beta parameter based on current training progress.
-        
+
         Args:
             frame_idx: Current frame index
-            
+
         根據當前訓練進度更新 beta 參數。
         
         參數：
             frame_idx: 當前幀索引
         """
         self.frame_count = frame_idx
-        # Linear annealing from beta_start to 1.0
-        self.beta = min(1.0, self.beta_start + frame_idx * (1.0 - self.beta_start) / self.beta_frames)
+        
+        # Calculate the progress of training
+        progress = min(1.0, frame_idx / self.beta_frames)
+        # Adjust beta using a non-linear function
+        adjusted_progress = progress ** 2  # Non-linear scaling
+        self.beta = min(1.0, self.beta_start + adjusted_progress * (1.0 - self.beta_start))
     
     def _calculate_priority(self, td_error):
         """

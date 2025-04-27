@@ -73,7 +73,7 @@ USE_PER = True  # Enable/disable PER (設為False則使用標準均勻採樣，P
 # PER超參數
 ALPHA = 0.6  # Priority exponent (優先級指數，增加會強化高誤差樣本的優先級，降低會趨近於均勻採樣)
 BETA_START = 0.4  # Initial importance sampling weight (初始重要性採樣權重，提高可減少偏差但可能降低學習效率)
-BETA_FRAMES = 200000  # Frames over which beta increases to 1.0 (β值增長到1.0所需的幀數，增加會使偏差校正更平滑)
+BETA_FRAMES = 400000  # 將這個值增加到 400,000 以降低 beta 上升速度
 EPSILON_PER = 1e-6  # Small constant for TD-errors (TD誤差的小常數，確保優先級非零，調整通常影響不大)
 
 # SumTree settings

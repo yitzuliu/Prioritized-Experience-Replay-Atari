@@ -19,6 +19,7 @@ import os
 import sys
 import random
 import time
+import datetime
 from collections import deque
 
 # Add parent directory to path to import config.py
@@ -55,7 +56,8 @@ class DQNAgent:
                  target_update_frequency=config.TARGET_UPDATE_FREQUENCY,
                  use_per=config.USE_PER, frame_skip=config.FRAME_SKIP,
                  per_log_frequency=config.PER_LOG_FREQUENCY,
-                 evaluate_mode=config.DEFAULT_EVALUATE_MODE):
+                 evaluate_mode=config.DEFAULT_EVALUATE_MODE,
+                 learning_starts=config.LEARNING_STARTS):
         """
         Initialize the DQN agent.
         
@@ -72,6 +74,7 @@ class DQNAgent:
             target_update_frequency: How often to update the target network
             use_per: Whether to use Prioritized Experience Replay
             evaluate_mode: Whether to run in evaluation mode (no exploration)
+            learning_starts: Number of steps before learning starts
         """
         # Store parameters
         self.state_shape = state_shape
@@ -87,6 +90,7 @@ class DQNAgent:
         self.frame_skip = config.FRAME_SKIP
         self._epsilon = epsilon_start 
         self.per_log_frequency = per_log_frequency
+        self.learning_starts = learning_starts
   
         # Set device (CPU, CUDA, or MPS)
         self.device = get_device()
@@ -151,9 +155,13 @@ class DQNAgent:
             # Use greedy policy for evaluation
             epsilon = 0
         else:
-            # Decay epsilon over time
-            epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
-                      np.exp(-1. * self.steps_done / self.epsilon_decay)
+            # Epsilon-greedy exploration strategy after learning starts            
+            if self.steps_done < self.learning_starts:
+                epsilon = self.epsilon_start 
+            else:
+                # Epsilon decay formula
+                epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
+                          np.exp(-1. * (self.steps_done - self.learning_starts) / self.epsilon_decay)
             
             # Increment step counter
             self.steps_done += 1
@@ -401,6 +409,101 @@ class DQNAgent:
             self.policy_network.eval()
         else:
             self.policy_network.train()
+    
+    def save_model(self, path, save_optimizer=True, include_memory=False, metadata=None):
+        """
+        Save the model weights and state to a file.
+        
+        Args:
+            path: Path to save the model
+            save_optimizer: Whether to save optimizer state
+            include_memory: Whether to include replay memory in the save (can be large)
+            metadata: Additional metadata to include in the save
+            
+        保存模型權重到文件。
+        
+        參數:
+            path: 保存模型的路徑
+            save_optimizer: 是否保存優化器狀態
+            include_memory: 是否包含回放記憶體（可能很大）
+            metadata: 要包含在保存中的額外元數據
+        """
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        
+        # Prepare model state
+        model_state = {
+            'policy_network': self.policy_network.state_dict(),
+            'target_network': self.target_network.state_dict(),
+            'steps_done': self.steps_done,
+            'training_steps': self.training_steps,
+            'epsilon': self._epsilon,
+            'timestamp': datetime.datetime.now().isoformat(),
+        }
+        
+        # Add optimizer state if requested
+        if save_optimizer:
+            model_state['optimizer'] = self.optimizer.state_dict()
+        
+        # Add memory if requested (warning: can be very large)
+        if include_memory and self.use_per:
+            # For PER, save prioritized replay buffer state
+            memory_state = self.memory.get_state_dict()
+            model_state['memory'] = memory_state
+        
+        # Add custom metadata if provided
+        if metadata:
+            model_state['metadata'] = metadata
+        
+        # Add performance metrics
+        if hasattr(self, 'loss_history') and self.loss_history:
+            model_state['metrics'] = {
+                'loss_history': self.loss_history,
+                'reward_history': self.reward_history if hasattr(self, 'reward_history') else [],
+                'epsilon_history': self.epsilon_history if hasattr(self, 'epsilon_history') else [],
+            }
+        
+        # Save to file
+        torch.save(model_state, path)
+        print(f"Model saved to {path}")
+        return True
+    
+    def load_model(self, path):
+        """
+        Load the model weights and state from a file.
+        
+        Args:
+            path: Path to the saved model
+            
+        Returns:
+            bool: True if the model was loaded successfully, False otherwise
+            
+        加載模型權重和狀態。
+        
+        參數:
+            path: 保存的模型路徑
+        """
+        if not os.path.exists(path):
+            print(f"Model file {path} not found.")
+            return False
+        
+        try:
+            # Load model state
+            model_state = torch.load(path, map_location=self.device)
+            
+            # Load model parameters
+            self.policy_network.load_state_dict(model_state['policy_network'])
+            self.target_network.load_state_dict(model_state['target_network'])
+            self.optimizer.load_state_dict(model_state['optimizer'])
+            self.steps_done = model_state['steps_done']
+            self.training_steps = model_state['training_steps']
+            self._epsilon = model_state['epsilon']
+            
+            print(f"Model loaded from {path}")
+            return True
+        except Exception as e:
+            print(f"Error loading model: {str(e)}")
+            return False
 
 
 # For testing purposes

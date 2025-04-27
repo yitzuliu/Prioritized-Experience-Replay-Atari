@@ -25,6 +25,8 @@ logs/
 *.log
 checkpoints/
 results/
+results/
+*results/
 
 # 虛擬環境 Virtual environments
 env/

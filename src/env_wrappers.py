@@ -195,11 +195,12 @@ class ResizeFrame(gym.ObservationWrapper):
             frame_width: 目標寬度
             frame_height: 目標高度
         """
+        # The super() function in Python is used to call methods from a parent class (also known as a superclass) from within a child class (subclass).
         super(ResizeFrame, self).__init__(env)
         self.frame_width = frame_width
         self.frame_height = frame_height
-        # 注意這裡改變了shape從(H,W,C)到(C,H,W)格式
-        self.observation_space = spaces.Box(
+        # Update observation space to match resized dimensions
+        self.observation_space = gym.spaces.Box(
             low=0, high=255, 
             shape=(1, self.frame_height, self.frame_width), 
             dtype=np.uint8

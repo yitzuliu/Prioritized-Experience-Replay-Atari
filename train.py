@@ -3,24 +3,24 @@ Training script for DQN with Prioritized Experience Replay.
 
 This script handles the complete training process for a DQN agent with 
 Prioritized Experience Replay on Atari games. It manages environment setup,
-agent training, evaluation, checkpointing, and visualization.
+agent training, evaluation, and visualization.
 
 DQN 優先經驗回放的訓練腳本。
 
 此腳本處理 DQN 智能體在 Atari 遊戲上使用優先經驗回放的完整訓練過程。
-它管理環境設置、智能體訓練、評估、檢查點保存和可視化。
+它管理環境設置、智能體訓練、評估和可視化。
 """
 
 import os
 import sys
 import time
 import json
-import argparse #parsing command-line arguments in Python scripts. It allows developers to create user-friendly command-line interfaces by defining what arguments the program requires.
+import argparse
 import random
 import numpy as np
 import torch
-import signal  #signal module in Python provides mechanisms to use signal handlers in Python. It allows you to set up handlers for various signals, such as SIGINT (Ctrl+C), SIGTERM, etc.
-import psutil #psutil is a cross-platform library for retrieving information on running processes and system utilization (CPU, memory, disks, network, sensors) in Python. It is used to monitor system resources and manage processes.
+import signal
+import psutil
 from datetime import datetime
 
 # Add parent directory to path to import config.py
@@ -34,11 +34,57 @@ from src.visualization import Visualizer
 from src.device_utils import get_device, get_system_info
 
 # Global variables for interrupt handling
-global agent, logger, model_dir, visualizer
+global agent, logger, visualizer, env
 agent = None
 logger = None
-model_dir = None
 visualizer = None
+env = None
+
+def signal_handler(sig, frame):
+    """
+    Handle interruption signals like SIGINT (Ctrl+C) to ensure graceful exit.
+    
+    處理中斷信號，如 SIGINT（Ctrl+C），以確保優雅退出
+    
+    Args:
+        sig: Signal number
+        frame: Current stack frame
+    """
+    global agent, logger, visualizer, env
+    
+    print("\n\nInterrupt received. Saving progress and exiting gracefully...")
+    
+    # Log the interruption
+    if logger is not None:
+        logger.log_text("\nTraining interrupted by user or system signal.")
+        
+        # Generate visualizations before exit
+        logger.log_text("Generating visualizations of current progress...")
+        
+        try:
+            if visualizer is None:
+                visualizer = Visualizer(logger_instance=logger)
+            
+            plots = visualizer.generate_all_plots(show=False)
+            logger.log_text(f"Successfully generated {len(plots)} visualization plots at interruption point")
+        except Exception as e:
+            logger.log_text(f"Error generating visualizations: {str(e)}")
+    
+    # Close the environment if open
+    if env is not None:
+        try:
+            env.close()
+        except:
+            pass
+    
+    # Final message
+    if logger is not None:
+        logger.log_text("Training program exited after interruption")
+    
+    print("Cleanup complete. Exiting.")
+    
+    # Exit with success code since this is a controlled exit
+    sys.exit(0)
 
 def parse_arguments():
     """
@@ -50,8 +96,6 @@ def parse_arguments():
         argparse.Namespace: The parsed arguments
     """
     parser = argparse.ArgumentParser(description='Train DQN with Prioritized Experience Replay')
-    parser.add_argument('--experiment_name', type=str, default='',
-                        help='Experiment name, auto-generated if empty')
     parser.add_argument('--env_name', type=str, default=config.ENV_NAME,
                         help=f'Environment name, default: {config.ENV_NAME}')
     parser.add_argument('--episodes', type=int, default=config.TRAINING_EPISODES,
@@ -66,8 +110,6 @@ def parse_arguments():
                         help=f'Game difficulty level (0-4, where 0 is easiest), default: {config.DIFFICULTY}')
     parser.add_argument('--enable_file_logging', action='store_true',
                         help='Enable file logging, default: disabled')
-    
-    
     return parser.parse_args()
 
 def train_one_episode(env, agent, logger, episode_num, total_steps):
@@ -96,6 +138,9 @@ def train_one_episode(env, agent, logger, episode_num, total_steps):
     episode_reward = 0
     episode_losses = []
     step_count = 0
+    
+    # Get current beta value if agent uses PER
+    beta = agent.memory.beta if hasattr(agent, 'memory') and hasattr(agent.memory, 'beta') else None
     
     # Episode loop
     while not done:
@@ -129,13 +174,18 @@ def train_one_episode(env, agent, logger, episode_num, total_steps):
         if total_steps % config.TARGET_UPDATE_FREQUENCY == 0:
             agent.target_network.load_state_dict(agent.policy_network.state_dict())
     
+    # Update beta value at the end of episode for logging
+    if hasattr(agent, 'memory') and hasattr(agent.memory, 'beta'):
+        beta = agent.memory.beta
+    
     # Record episode end and statistics
     logger.log_episode_end(
         episode_num=episode_num,
         total_reward=episode_reward,
         steps=step_count,
         avg_loss=np.mean(episode_losses) if episode_losses else None,
-        epsilon=agent.epsilon
+        epsilon=agent.epsilon,
+        beta=beta  # Pass the beta value to the logger
     )
     
     # Return episode statistics and step count
@@ -143,7 +193,8 @@ def train_one_episode(env, agent, logger, episode_num, total_steps):
         'reward': episode_reward,
         'steps': step_count,
         'avg_loss': np.mean(episode_losses) if episode_losses else None,
-        'epsilon': agent.epsilon
+        'epsilon': agent.epsilon,
+        'beta': beta  # Include beta in the returned statistics
     }, step_count
 
 def evaluate_agent(env, agent, logger, episode_num, num_episodes=config.EVAL_EPISODES):
@@ -224,56 +275,23 @@ def check_resources():
     
     return resources
 
-def handle_interrupt(signum, frame):
-    """
-    Handle interrupt signal (Ctrl+C), save current state and generate visualizations.
-    
-    處理中斷信號 (Ctrl+C)，保存當前狀態並生成可視化
-    
-    Args:
-        signum: Signal number
-        frame: Current stack frame
-    """
-    global agent, logger, model_dir, visualizer
-    
-    if logger is not None:
-        logger.log_text("\nTraining interrupted, saving state...")
-        
-        # Save model and training state
-        if agent is not None and model_dir is not None:
-            interrupt_model_path = os.path.join(model_dir, "interrupted_model.pt")
-            agent.save_model(interrupt_model_path)
-            logger.log_text(f"Model saved to: {interrupt_model_path}")
-        
-        logger.save_training_state()
-        logger.log_text("Training state saved")
-        
-        # Generate visualizations
-        logger.log_text("Generating visualizations...")
-        if visualizer is None:
-            visualizer = Visualizer(logger_instance=logger)
-        plots = visualizer.generate_all_plots(show=False)
-        logger.log_text(f"Generated {len(plots)} visualization plots")
-        logger.log_text("Training safely interrupted. Use resume.py to continue training.")
-    
-    # Normal exit
-    sys.exit(0)
-
 def main():
     """
     Main training function that coordinates the entire training process.
     
     主訓練函數，協調整個訓練過程
     """
-    global agent, logger, model_dir, visualizer
+    global agent, logger, visualizer, env
+    
+    # Register signal handlers for graceful exit
+    signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+    signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
     
     # Parse command line arguments
     args = parse_arguments()
     
     # Set experiment name
-    experiment_name = args.experiment_name
-    if not experiment_name:
-        experiment_name = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    experiment_name = f"exp_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
     # Override config settings with command line arguments
     if args.enable_file_logging:
@@ -293,26 +311,6 @@ def main():
     # Create directories
     for directory in [config.MODEL_DIR, config.LOG_DIR, config.DATA_DIR, config.PLOT_DIR]:
         os.makedirs(directory, exist_ok=True)
-    
-    model_dir = os.path.join(config.MODEL_DIR, experiment_name)
-    os.makedirs(model_dir, exist_ok=True)
-    
-    # Save experiment configuration
-    config_path = os.path.join(model_dir, "experiment_config.json") # Create a JSON file named experiment_config.json
-     # whith open(...)as... is a context manager that automatically closes the file after the block is executed
-    with open(config_path, 'w') as f:                       #Open the file in "write mode", f means file
-        config_data = {
-            "experiment_name": experiment_name,
-            "env_name": args.env_name,
-            "episodes": args.episodes,
-            "seed": args.seed,
-            "use_per": not args.no_per,
-            "learning_rate": args.learning_rate,
-            "difficulty": args.difficulty,
-            "device": str(device),
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        json.dump(config_data, f, indent=4) # Save JSON with indentation
     
     # Initialize environment
     env = make_atari_env(env_name=args.env_name, training=True)
@@ -347,39 +345,16 @@ def main():
             # Train one episode
             episode_stats, steps_taken = train_one_episode(env, agent, logger, episode, total_steps)
             total_steps += steps_taken
-            
-            # Periodically output training progress
-            if episode % config.LOGGER_DETAILED_INTERVAL == 0:
-                elapsed_time = time.time() - start_time
-                hrs, rem = divmod(elapsed_time, 3600)
-                mins, secs = divmod(rem, 60)
-                
-                logger.log_text(
-                    f"Episode: {episode}/{total_episodes} "
-                    f"({episode/total_episodes*100:.1f}%) | "
-                    f"Reward: {episode_stats['reward']:.2f} | "
-                    f"Steps: {episode_stats['steps']} | "
-                    f"Epsilon: {episode_stats['epsilon']:.4f} | "
-                    f"Elapsed time: {int(hrs):02d}:{int(mins):02d}:{int(secs):02d}"
-                )
-            
+
             # Periodically evaluate
             if episode % config.EVAL_FREQUENCY == 0:
                 eval_reward = evaluate_agent(env, agent, logger, episode)
                 
-                # Save best model
+                # Track best evaluation reward
                 if eval_reward > best_eval_reward:
                     best_eval_reward = eval_reward
-                    best_model_path = os.path.join(model_dir, "best_model.pt")
-                    agent.save_model(best_model_path)
-                    logger.log_text(f"New best model! Mean reward: {best_eval_reward:.2f}")
-            
-            # Periodically save checkpoints
-            if episode % config.SAVE_FREQUENCY == 0:
-                checkpoint_path = os.path.join(model_dir, f"checkpoint_{episode}.pt")
-                agent.save_model(checkpoint_path, episode=episode)
-                logger.save_training_state()
-                logger.log_text(f"Checkpoint saved (episode {episode})")
+                    logger.update_best_eval_reward(best_eval_reward)
+                    logger.log_text(f"New best result! Mean reward: {best_eval_reward:.2f}")
             
             # Periodically check resources
             if episode % 10 == 0:
@@ -387,17 +362,20 @@ def main():
                 if resources['memory_percent'] > config.MEMORY_THRESHOLD_PERCENT:
                     logger.log_text(f"Warning: Memory usage {resources['memory_percent']:.1f}% exceeds threshold")
                     logger.limit_memory_usage()
+            
+            # Periodically save visualizations during training
+            if episode % config.VISUALIZATION_SAVE_INTERVAL == 0:
+                try:
+                    if visualizer is None:
+                        visualizer = Visualizer(logger_instance=logger)
+                    # Create just the overview plot to avoid too many files
+                    visualizer.plot_training_overview(save=True, show=False)
+                    logger.log_text(f"Saved intermediate visualization at episode {episode}")
+                except Exception as e:
+                    logger.log_text(f"Error generating intermediate visualization: {str(e)}")
         
         # Training completed
-        logger.log_text("\nTraining completed!")
-        
-        # Save final model
-        final_model_path = os.path.join(model_dir, "final_model.pt")
-        agent.save_model(final_model_path, episode=total_episodes)
-        logger.log_text(f"Final model saved to: {final_model_path}")
-        
-        # Save training state
-        logger.save_training_state()
+        logger.log_text("\nTraining completed successfully!")
         
         # Log training summary
         total_time = time.time() - start_time
@@ -422,25 +400,22 @@ def main():
         # Exception handling
         logger.log_text(f"\nException occurred during training: {str(e)}")
         
-        # Save model at exception
-        exception_model_path = os.path.join(model_dir, "exception_model.pt")
-        agent.save_model(exception_model_path)
-        logger.log_text(f"Model at exception saved to: {exception_model_path}")
-        
-        # Save training state
-        logger.save_training_state()
-        
         # Generate visualizations at exception
-        logger.log_text("Generating visualizations...")
-        visualizer = Visualizer(logger_instance=logger)
-        visualizer.generate_all_plots(show=False)
+        logger.log_text("Generating visualizations before exit...")
+        try:
+            if visualizer is None:
+                visualizer = Visualizer(logger_instance=logger)
+            visualizer.generate_all_plots(show=False)
+            logger.log_text("Successfully generated visualizations after exception")
+        except Exception as viz_error:
+            logger.log_text(f"Error generating visualizations: {str(viz_error)}")
         
         # Re-raise exception
         raise
         
     finally:
         # Close environment
-        if 'env' in locals():
+        if env is not None:
             env.close()
         
         # Output completion information
@@ -448,8 +423,5 @@ def main():
             logger.log_text("Training program exited")
 
 if __name__ == "__main__":
-    # Register signal handler
-    signal.signal(signal.SIGINT, handle_interrupt)
-    
     # Start training
     main()

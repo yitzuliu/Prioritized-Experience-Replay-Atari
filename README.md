@@ -18,9 +18,9 @@ This project implements a Deep Q-Network (DQN) with Prioritized Experience Repla
 - **Multi-Platform Compatibility**: Automatic detection and utilization of CPU, CUDA (NVIDIA GPU), or MPS (Apple Silicon)
 - **Detailed Visualization**: Provides visualizations of training progress, rewards, losses, and priority distributions
 - **Educational Implementation**: Includes detailed bilingual (English/Chinese) comments and algorithm explanations suitable for learning and research
-- **Efficient Training**: Optimized environment preprocessing, experience sampling, and model architecture with support for training interruption and resumption
+- **Efficient Training**: Optimized environment preprocessing, experience sampling, and model architecture
 
-*主要特點：完整的 PER 實現、多平台兼容、詳細視覺化、教育性實現和高效訓練機制*
+*主要特點：完整的 PER 實現、多平台兼容、詳細視覺化、教育性實現和*
 
 ## 🛠️ Installation & Setup (安裝與設置)
 
@@ -50,7 +50,6 @@ pip install -r requirements.txt
 .
 ├── config.py                    # Configuration file with all hyperparameters
 ├── train.py                     # Training script to start the training process
-├── resume.py                    # Script to resume training from checkpoints
 ├── src/
 │   ├── dqn_agent.py             # DQN agent implementation
 │   ├── per_memory.py            # Prioritized Experience Replay memory
@@ -60,7 +59,7 @@ pip install -r requirements.txt
 │   ├── device_utils.py          # Device detection and optimization utilities
 │   ├── logger.py                # Training logging tools
 │   └── visualization.py         # Training metrics visualization tools
-├── result/                      # Directory for storing training results
+├── results/                      # Directory for storing training results
 │   ├── data/                    # Training data
 │   ├── logs/                    # Training logs
 │   ├── models/                  # Saved models
@@ -78,19 +77,6 @@ To train a new model from scratch:
 python train.py
 ```
 
-To train with custom configuration:
-
-```bash
-python train.py --experiment_name custom_run --render
-```
-
-### Resuming Training (恢復訓練)
-
-To resume training from a checkpoint:
-
-```bash
-python resume.py --checkpoint_path result/models/exp_timestamp/checkpoint_100.pt
-```
 
 ### Algorithm Description (演算法說明)
 
@@ -110,7 +96,7 @@ This project implements the DQN algorithm with Prioritized Experience Replay:
 
 ## 📈 Experimental Results (實驗結果)
 
-The training process generates various visualizations stored in the `result/plots` directory:
+The training process generates various visualizations stored in the `results/plots` directory:
 
 - Reward curves: Shows average rewards obtained per episode
 - Loss curves: Shows how the network training loss changes

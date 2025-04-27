@@ -31,7 +31,6 @@ class Logger:
     - Recording training metrics
     - Progress reporting
     - Data storage with memory optimization
-    - Support for training resumption
     - Data interfaces for visualization
     
     DQN 使用 PER 的訓練日誌記錄器。
@@ -40,16 +39,17 @@ class Logger:
     - 記錄訓練指標
     - 進度報告
     - 記憶體優化的數據存儲
-    - 支持訓練恢復
     - 向可視化模組提供數據接口
     """
     
     def __init__(self, log_dir: str = config.LOG_DIR, 
                  data_dir: str = config.DATA_DIR,
                  experiment_name: str = None,
+                 enable_file_logging: bool = config.ENABLE_FILE_LOGGING,
                  save_interval: int = config.LOGGER_SAVE_INTERVAL, 
                  memory_window: int = config.LOGGER_MEMORY_WINDOW,
-                 batch_size: int = config.LOGGER_BATCH_SIZE):
+                 batch_size: int = config.LOGGER_BATCH_SIZE,
+                 per_log_frequency: int = config.PER_LOG_FREQUENCY):
         """
         Initialize the logger.
         
@@ -57,9 +57,11 @@ class Logger:
             log_dir: Directory for storing logs
             data_dir: Directory for storing data
             experiment_name: Name of the experiment (defaults to timestamp)
+            enable_file_logging: Whether to enable file logging
             save_interval: Interval for auto-saving data (episodes)
             memory_window: Maximum number of records to keep in memory
             batch_size: Number of records to accumulate before writing to disk
+            per_log_frequency: How frequently to log PER updates (steps)
         """
         # Create a unique experiment name if not provided
         if experiment_name is None:
@@ -79,25 +81,34 @@ class Logger:
         self.save_interval = save_interval
         self.memory_window = memory_window
         self.batch_size = batch_size
+        self.per_log_frequency = per_log_frequency
+        self.enable_file_logging = enable_file_logging
         
-        # Initialize training metrics
+        # Initialize training metrics (only keep recent data in memory)
         self.episode_rewards: List[float] = []
         self.episode_lengths: List[int] = []
         self.episode_losses: List[float] = []
         self.epsilon_values: List[Tuple[int, float]] = []  # (step, epsilon)
         self.beta_values: List[Tuple[int, float]] = []  # (step, beta)
         
-        # PER specific metrics
+        # PER specific metrics - store summaries instead of raw data
         self.priority_means: List[Tuple[int, float]] = []  # (step, mean_priority)
         self.priority_maxes: List[Tuple[int, float]] = []  # (step, max_priority)
         self.td_error_means: List[Tuple[int, float]] = []  # (step, mean_td_error)
         self.is_weight_means: List[Tuple[int, float]] = []  # (step, mean_is_weight)
+        
+        # Store tracking variables for last logged values to reduce redundancy
+        self.last_logged_beta = None
+        self.last_logged_epsilon = None
         
         # Training progress
         self.total_steps: int = 0
         self.current_episode: int = 0
         self.start_time = time.time()
         self.episode_start_time = time.time()
+        
+        # Best evaluation reward tracking
+        self.best_eval_reward: float = float('-inf')
         
         # For tracking moving averages
         self.reward_window = deque(maxlen=100)
@@ -107,17 +118,21 @@ class Logger:
         self.data_buffer = []
         self.buffer_count = 0
         
+        # Buffer for PER metrics batch writing
+        self.per_data_buffer = []
+        self.per_buffer_count = 0
+        
         # File paths
         self.log_file_path = os.path.join(self.log_dir, "training_log.txt")
-        self.state_file_path = os.path.join(self.data_dir, "training_state.json")
         self.episode_data_path = os.path.join(self.data_dir, "episode_data.jsonl")
         self.per_data_path = os.path.join(self.data_dir, "per_data.jsonl")
         
         # Create the log file and write header
-        with open(self.log_file_path, "w") as f:
-            f.write(f"Training Log - Experiment: {self.experiment_name}\n")
-            f.write(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write("=" * 80 + "\n\n")
+        if enable_file_logging:
+            with open(self.log_file_path, "w") as f:
+                f.write(f"Training Log - Experiment: {self.experiment_name}\n")
+                f.write(f"Started: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("=" * 80 + "\n\n")
         
         # Log initialization message
         self.log_text(f"Logger initialized. Experiment: {self.experiment_name}")
@@ -136,7 +151,8 @@ class Logger:
                         total_reward: float, 
                         steps: int, 
                         avg_loss: Optional[float] = None,
-                        epsilon: Optional[float] = None):
+                        epsilon: Optional[float] = None,
+                        beta: Optional[float] = None):  # Added beta parameter
         """
         Log the end of an episode with metrics.
         
@@ -146,6 +162,7 @@ class Logger:
             steps: Number of steps taken in the episode
             avg_loss: Average loss during the episode (if available)
             epsilon: Current epsilon value (if available)
+            beta: Current beta value for PER (if available)
         """
         # Calculate episode duration
         duration = time.time() - self.episode_start_time
@@ -183,6 +200,10 @@ class Logger:
         if epsilon is not None:
             episode_data["epsilon"] = epsilon
             
+        # Add beta to episode data if available
+        if beta is not None:
+            episode_data["beta"] = beta
+            
         # Add to buffer for batch writing
         self.data_buffer.append(episode_data)
         self.buffer_count += 1
@@ -190,16 +211,29 @@ class Logger:
         # Format the log line
         loss_str = f"{avg_loss:.6f}" if avg_loss is not None else "N/A"
         epsilon_str = f"{epsilon:.4f}" if epsilon is not None else "N/A"
+        beta_str = f"{beta:.4f}" if beta is not None else "N/A"
         
-        # Create log line in the desired format
-        log_line = f"episode {episode_num} | steps {steps} | reward {total_reward:.2f} | loss {loss_str} | Epsilon {epsilon_str} | during {duration:.2f}s"
+        # Create log line with the requested format
+        log_line = f"episode {episode_num} | steps {steps} | reward {total_reward:.2f} | loss {loss_str}"
+        
+        # Only add epsilon and beta if they're provided, with updated format
+        if epsilon is not None:
+            log_line += f" | Epsilon {epsilon_str}"
+        if beta is not None:
+            log_line += f" | Beta {beta_str}"
+            
+        log_line += f" | during {duration:.2f}s"
         
         # Print to console
         print(log_line)
         
         # Write to log file with the exact same format (no timestamp prefix)
-        with open(self.log_file_path, "a") as f:
-            f.write(f"{log_line}\n")
+        if self.enable_file_logging:
+            try:
+                with open(self.log_file_path, "a") as f:
+                    f.write(f"{log_line}\n")
+            except OSError as e:
+                print(f"WARNING: Failed to write to log file: {str(e)}. Continuing without logging to file.")
             
         # Print detailed progress report at intervals
         if episode_num % config.LOGGER_DETAILED_INTERVAL == 0:
@@ -208,10 +242,6 @@ class Logger:
         # Perform batch write if buffer is full
         if self.buffer_count >= self.batch_size:
             self._batch_write()
-            
-        # Auto-save state at specified intervals
-        if episode_num % self.save_interval == 0:
-            self.save_training_state()
             
         # Manage memory usage
         self.limit_memory_usage()
@@ -243,25 +273,33 @@ class Logger:
             td_errors: Array of TD errors
             is_weights: Array of importance sampling weights
         """
-        # Record beta value
-        self.beta_values.append((step_num, beta))
+        # Check if beta value has changed significantly before logging
+        # This reduces redundant logging when beta changes very slowly
+        significant_beta_change = (
+            self.last_logged_beta is None or 
+            abs(beta - self.last_logged_beta) > 0.01 or
+            step_num % (self.per_log_frequency * 10) == 0
+        )
         
-        # Calculate and record priority statistics
-        mean_priority = float(np.mean(priorities))
-        max_priority = float(np.max(priorities))
-        self.priority_means.append((step_num, mean_priority))
-        self.priority_maxes.append((step_num, max_priority))
+        if significant_beta_change:
+            self.beta_values.append((step_num, beta))
+            self.last_logged_beta = beta
         
-        # Calculate and record TD error statistics
-        mean_td_error = float(np.mean(np.abs(td_errors)))
-        self.td_error_means.append((step_num, mean_td_error))
-        
-        # Calculate and record importance sampling weight statistics
-        mean_is_weight = float(np.mean(is_weights))
-        self.is_weight_means.append((step_num, mean_is_weight))
-        
-        # Create PER data record (only occasionally to avoid too much data)
-        if step_num % 1000 == 0:
+        # Only log at specified frequency to reduce data volume
+        if step_num % self.per_log_frequency == 0:
+            # Calculate and record summary statistics instead of raw data
+            mean_priority = float(np.mean(priorities))
+            max_priority = float(np.max(priorities)) 
+            mean_td_error = float(np.mean(np.abs(td_errors)))
+            mean_is_weight = float(np.mean(is_weights))
+            
+            # Record the summary statistics
+            self.priority_means.append((step_num, mean_priority))
+            self.priority_maxes.append((step_num, max_priority))
+            self.td_error_means.append((step_num, mean_td_error))
+            self.is_weight_means.append((step_num, mean_is_weight))
+            
+            # Create PER data record
             per_data = {
                 "step": step_num,
                 "beta": beta,
@@ -272,16 +310,20 @@ class Logger:
                 "timestamp": time.time()
             }
             
-            # Append to PER data file directly (less frequent, so no batching needed)
-            with open(self.per_data_path, 'a') as f:
-                f.write(json.dumps(per_data) + '\n')
+            # Add to buffer instead of writing directly
+            self.per_data_buffer.append(per_data)
+            self.per_buffer_count += 1
             
-            # Log to file occasionally (not every update to avoid performance impact)
-            self.log_text(
-                f"PER Update - Step: {step_num}, Beta: {beta:.4f}, "
-                f"Mean Priority: {mean_priority:.6f}, Max Priority: {max_priority:.6f}, "
-                f"Mean TD Error: {mean_td_error:.6f}, Mean IS Weight: {mean_is_weight:.6f}"
-            )
+            # Perform batch write if buffer has enough entries
+            if self.per_buffer_count >= config.PER_BATCH_SIZE:
+                self._batch_write_per()
+            
+            # Only log to console for significant changes (less frequently)
+            if step_num % (self.per_log_frequency * 20) == 0:
+                self.log_text(
+                    f"PER Update - Step: {step_num}, Beta: {beta:.4f}, "
+                    f"Mean Priority: {mean_priority:.6f}, Max Priority: {max_priority:.6f}"
+                )
     
     def log_epsilon(self, step_num: int, epsilon: float):
         """
@@ -291,83 +333,17 @@ class Logger:
             step_num: Global step number
             epsilon: Current epsilon value
         """
-        self.epsilon_values.append((step_num, epsilon))
-    
-    def save_training_state(self):
-        """
-        Save the current training state to file for resuming later.
+        # Check if epsilon value has changed significantly before logging
+        # This reduces redundant logging when epsilon changes very slowly
+        significant_epsilon_change = (
+            self.last_logged_epsilon is None or 
+            abs(epsilon - self.last_logged_epsilon) > 0.01 or
+            step_num % 5000 == 0  # Force log every 5000 steps
+        )
         
-        This captures all metrics and progress information needed to resume training.
-        """
-        # Perform any pending batch writes first
-        if self.buffer_count > 0:
-            self._batch_write()
-            
-        # Create a dictionary with all training state
-        training_state = {
-            "experiment_name": self.experiment_name,
-            "total_steps": self.total_steps,
-            "current_episode": self.current_episode,
-            "start_time": self.start_time,
-            "current_time": time.time(),
-            
-            # Summary metrics (recent records only, to keep file size manageable)
-            "recent_rewards": list(self.reward_window),
-            "recent_losses": list(self.loss_window),
-            
-            # Save indices to locate full history in the JSONL files
-            "episode_count": len(self.episode_rewards),
-            "epsilon_count": len(self.epsilon_values),
-            "beta_count": len(self.beta_values),
-            
-            # Latest values for quick reference
-            "latest_reward": self.episode_rewards[-1] if self.episode_rewards else None,
-            "latest_loss": self.episode_losses[-1] if self.episode_losses else None,
-            "latest_epsilon": self.epsilon_values[-1][1] if self.epsilon_values else None,
-            "latest_beta": self.beta_values[-1][1] if self.beta_values else None
-        }
-        
-        # Write to file
-        with open(self.state_file_path, 'w') as f:
-            json.dump(training_state, f, indent=2)
-            
-        self.log_text(f"Training state saved at episode {self.current_episode}")
-    
-    def load_training_state(self):
-        """
-        Load training state from file.
-        
-        Returns:
-            dict: The loaded training state, or None if file doesn't exist
-        """
-        if not os.path.exists(self.state_file_path):
-            self.log_text("No saved training state found")
-            return None
-            
-        try:
-            with open(self.state_file_path, 'r') as f:
-                training_state = json.load(f)
-                
-            # Restore basic metrics
-            self.experiment_name = training_state["experiment_name"]
-            self.total_steps = training_state["total_steps"]
-            self.current_episode = training_state["current_episode"]
-            self.start_time = training_state["start_time"]
-            
-            # Restore recent metrics for moving averages
-            self.reward_window = deque(training_state["recent_rewards"], maxlen=100)
-            self.loss_window = deque(training_state["recent_losses"], maxlen=100)
-            
-            # Load full history from data files (up to the episodes saved)
-            self._load_episode_history()
-            self._load_per_history()
-            
-            self.log_text(f"Loaded training state from episode {self.current_episode}")
-            return training_state
-            
-        except Exception as e:
-            self.log_text(f"Error loading training state: {str(e)}")
-            return None
+        if significant_epsilon_change:
+            self.epsilon_values.append((step_num, epsilon))
+            self.last_logged_epsilon = epsilon
     
     def limit_memory_usage(self):
         """
@@ -386,25 +362,33 @@ class Logger:
             self.episode_losses = self.episode_losses[trim_count:]
             
         # Similarly trim PER metrics if they grow too large
-        max_per_records = self.memory_window * 10  # PER metrics can be more frequent
+        max_per_records = self.memory_window * 5  # Reduced from 10 to 5 for memory efficiency
         
-        if len(self.epsilon_values) > max_per_records:
-            self.epsilon_values = self.epsilon_values[-max_per_records:]
-            
-        if len(self.beta_values) > max_per_records:
-            self.beta_values = self.beta_values[-max_per_records:]
-            
-        if len(self.priority_means) > max_per_records:
-            self.priority_means = self.priority_means[-max_per_records:]
-            
-        if len(self.priority_maxes) > max_per_records:
-            self.priority_maxes = self.priority_maxes[-max_per_records:]
-            
-        if len(self.td_error_means) > max_per_records:
-            self.td_error_means = self.td_error_means[-max_per_records:]
-            
-        if len(self.is_weight_means) > max_per_records:
-            self.is_weight_means = self.is_weight_means[-max_per_records:]
+        # More aggressive trimming for time-series metrics
+        for metric_list in [self.epsilon_values, self.beta_values, self.priority_means, 
+                           self.priority_maxes, self.td_error_means, self.is_weight_means]:
+            if len(metric_list) > max_per_records:
+                # Keep first few, last few, and evenly sample the middle for visualization
+                if len(metric_list) > max_per_records * 2:
+                    # If we have a lot of data, keep the first 10%, last 30%, and sample 60% from the middle
+                    first_n = max(10, int(max_per_records * 0.1))
+                    last_n = max(30, int(max_per_records * 0.3))
+                    middle_n = max_per_records - first_n - last_n
+                    
+                    # Get indices for the middle section to sample
+                    middle_start = first_n
+                    middle_end = len(metric_list) - last_n
+                    middle_indices = np.linspace(middle_start, middle_end-1, middle_n, dtype=int)
+                    
+                    # Combine first, sampled middle, and last sections
+                    metric_list[:] = (
+                        metric_list[:first_n] + 
+                        [metric_list[i] for i in middle_indices] + 
+                        metric_list[-last_n:]
+                    )
+                else:
+                    # For smaller amounts, just keep the most recent
+                    metric_list[:] = metric_list[-max_per_records:]
     
     def get_training_data(self, metric_name=None, start=None, end=None):
         """
@@ -418,6 +402,10 @@ class Logger:
         Returns:
             dict: The requested training data
         """
+        # First, ensure all data is written to disk for consistency
+        self._batch_write()
+        self._batch_write_per()
+        
         # Define the data dictionary with all metrics
         data = {
             "rewards": self.episode_rewards,
@@ -482,6 +470,7 @@ class Logger:
             "current_reward_avg": current_reward_avg,
             "best_reward": best_reward,
             "best_episode": best_episode,
+            "best_eval_reward": self.best_eval_reward,
             "last_rewards": self.episode_rewards[-10:] if len(self.episode_rewards) >= 10 else self.episode_rewards
         }
         
@@ -497,25 +486,61 @@ class Logger:
         # Print to console directly without timestamp
         print(message)
         
-        # Write to log file without timestamp
-        with open(self.log_file_path, "a") as f:
-            f.write(message + "\n")
-            
+        if self.enable_file_logging:
+            try:
+                # Write to log file without timestamp
+                with open(self.log_file_path, "a") as f:
+                    f.write(message + "\n")
+            except OSError as e:
+                print(f"WARNING: Failed to write to log file: {str(e)}. Continuing without logging to file.")
+    
+    def update_best_eval_reward(self, new_best_reward):
+        """
+        Update the best evaluation reward value.
+        Called by training scripts when a better model performance is discovered.
+        
+        Args:
+            new_best_reward: New best evaluation reward value
+        """
+        if new_best_reward > self.best_eval_reward:
+            self.best_eval_reward = new_best_reward
+            self.log_text(f"Updated best evaluation reward to: {new_best_reward:.2f}")
+    
     # === Internal helper methods ===
     
     def _batch_write(self):
-        """Perform batch writing of accumulated data to disk."""
-        if not self.data_buffer:
+        """Perform batch writing of accumulated episode data to disk."""
+        if not self.data_buffer or not self.enable_file_logging:
             return
             
         # Append to episode data file
-        with open(self.episode_data_path, 'a') as f:
-            for record in self.data_buffer:
-                f.write(json.dumps(record) + '\n')
+        try:
+            with open(self.episode_data_path, 'a') as f:
+                for record in self.data_buffer:
+                    f.write(json.dumps(record) + '\n')
+        except OSError as e:
+            print(f"WARNING: Failed to write to episode data file: {str(e)}. Continuing without logging to file.")
                 
         # Clear the buffer
         self.data_buffer = []
         self.buffer_count = 0
+    
+    def _batch_write_per(self):
+        """Perform batch writing of accumulated PER data to disk."""
+        if not self.per_data_buffer or not self.enable_file_logging:
+            return
+            
+        # Append to PER data file
+        try:
+            with open(self.per_data_path, 'a') as f:
+                for record in self.per_data_buffer:
+                    f.write(json.dumps(record) + '\n')
+        except OSError as e:
+            print(f"WARNING: Failed to write to PER data file: {str(e)}. Continuing without logging to file.")
+                
+        # Clear the buffer
+        self.per_data_buffer = []
+        self.per_buffer_count = 0
     
     def _format_progress_report(self, detailed=False):
         """
@@ -560,15 +585,21 @@ class Logger:
         # Add elapsed time
         report.append(f"Elapsed time: {int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}")
         
+        # Add best evaluation reward
+        if self.best_eval_reward > float('-inf'):
+            report.append(f"Best Evaluation Reward: {self.best_eval_reward:.2f}")
+        
         # Add last 5 rewards
         if self.episode_rewards:
-            report.append(f"Last 5 Rewards: {self.episode_rewards[-5:]}")
+            last_rewards = [f"{r:.1f}" for r in self.episode_rewards[-5:]]
+            report.append(f"Last 5 Rewards: [{', '.join(last_rewards)}]")
         
         # Add PER statistics (only if detailed and available)
         if detailed:
             if self.beta_values:
                 latest_beta = self.beta_values[-1][1]
-                report.append(f"Current Beta: {latest_beta:.4f}")
+                beta_progress = (latest_beta - config.BETA_START) / (1.0 - config.BETA_START) * 100
+                report.append(f"Current Beta: {latest_beta:.4f} ({beta_progress:.1f}% to 1.0)")
                 
             if self.priority_means:
                 latest_priority = self.priority_means[-1][1]
@@ -577,75 +608,15 @@ class Logger:
             if self.td_error_means:
                 latest_td_error = self.td_error_means[-1][1]
                 report.append(f"Current Avg TD Error: {latest_td_error:.6f}")
-        
-        # Add saving state message
-        report.append(f"Training state saved at episode {self.current_episode}")
+                
+            if self.is_weight_means:
+                latest_is_weight = self.is_weight_means[-1][1]
+                report.append(f"Current Avg IS Weight: {latest_is_weight:.6f}")
         
         # Add bottom separator
         report.append("==================================================================")
         
         return "\n".join(report)
-    
-    def _load_episode_history(self):
-        """Load episode history from data file."""
-        if not os.path.exists(self.episode_data_path):
-            return
-            
-        # Clear existing episode data
-        self.episode_rewards = []
-        self.episode_lengths = []
-        self.episode_losses = []
-        
-        # Read from JSONL file
-        try:
-            with open(self.episode_data_path, 'r') as f:
-                for line in f:
-                    if line.strip():
-                        data = json.loads(line)
-                        self.episode_rewards.append(data["reward"])
-                        self.episode_lengths.append(data["steps"])
-                        if "loss" in data:
-                            self.episode_losses.append(data["loss"])
-        except Exception as e:
-            self.log_text(f"Error loading episode history: {str(e)}")
-    
-    def _load_per_history(self):
-        """Load PER metrics history from data file."""
-        if not os.path.exists(self.per_data_path):
-            return
-            
-        # Clear existing PER data
-        self.epsilon_values = []
-        self.beta_values = []
-        self.priority_means = []
-        self.priority_maxes = []
-        self.td_error_means = []
-        self.is_weight_means = []
-        
-        # Read from JSONL file
-        try:
-            with open(self.per_data_path, 'r') as f:
-                for line in f:
-                    if line.strip():
-                        data = json.loads(line)
-                        step = data["step"]
-                        
-                        if "beta" in data:
-                            self.beta_values.append((step, data["beta"]))
-                            
-                        if "mean_priority" in data:
-                            self.priority_means.append((step, data["mean_priority"]))
-                            
-                        if "max_priority" in data:
-                            self.priority_maxes.append((step, data["max_priority"]))
-                            
-                        if "mean_td_error" in data:
-                            self.td_error_means.append((step, data["mean_td_error"]))
-                            
-                        if "mean_is_weight" in data:
-                            self.is_weight_means.append((step, data["mean_is_weight"]))
-        except Exception as e:
-            self.log_text(f"Error loading PER history: {str(e)}")
 
 
 # For testing purposes
@@ -691,11 +662,8 @@ if __name__ == "__main__":
                 
         # Log episode completion
         avg_loss = np.mean(step_losses)
-        logger.log_episode_end(episode, episode_reward, 100, avg_loss, epsilon)
+        logger.log_episode_end(episode, episode_reward, 100, avg_loss, epsilon, beta)
         
-    # Save training state
-    logger.save_training_state()
-    
     # Get and print training summary
     summary = logger.get_training_summary()
     print("\nTraining Summary:")

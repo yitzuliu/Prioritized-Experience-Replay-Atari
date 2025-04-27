@@ -53,7 +53,8 @@ class DQNAgent:
                  memory_capacity=config.MEMORY_CAPACITY,
                  batch_size=config.BATCH_SIZE,
                  target_update_frequency=config.TARGET_UPDATE_FREQUENCY,
-                 use_per=config.USE_PER,
+                 use_per=config.USE_PER, frame_skip=config.FRAME_SKIP,
+                 per_log_frequency=config.PER_LOG_FREQUENCY,
                  evaluate_mode=config.DEFAULT_EVALUATE_MODE):
         """
         Initialize the DQN agent.
@@ -83,7 +84,9 @@ class DQNAgent:
         self.target_update_frequency = target_update_frequency
         self.use_per = use_per
         self.evaluate_mode = evaluate_mode
+        self.frame_skip = config.FRAME_SKIP
         self._epsilon = epsilon_start 
+        self.per_log_frequency = per_log_frequency
   
         # Set device (CPU, CUDA, or MPS)
         self.device = get_device()
@@ -335,13 +338,12 @@ class DQNAgent:
         
         # Calculate the weighted loss L = 1/B · Σ w_j · (δ_j)²
         # Importance sampling weights correct the bias introduced by prioritized sampling
-        # 首先計算每個樣本的損失（不進行reduction）
         element_wise_loss = F.smooth_l1_loss(current_q_values, expected_q_values, reduction='none')
         
-        # 確保維度匹配，將batch_weights調整為[batch_size, 1]形狀以匹配element_wise_loss
+        # Ensure dimensions match, adjust batch_weights to [batch_size, 1] shape to match element_wise_loss
         batch_weights = batch_weights.view(-1, 1)
         
-        # 應用權重並取平均
+        # Apply weights and take mean
         weighted_loss = (batch_weights * element_wise_loss)
         loss = weighted_loss.mean()
         
@@ -371,83 +373,21 @@ class DQNAgent:
         if self.use_per:
             self.memory.update_beta(self.steps_done)
             
-            # Log PER metrics for visualization if logger is provided
-            if logger is not None and self.training_steps % 100 == 0:
+            # Only log PER metrics at specified reduced frequency to avoid excessive data
+            if logger is not None and self.training_steps % self.per_log_frequency == 0:
+                # Get the current beta value from memory
+                current_beta = self.memory.beta
+                
+                # Log PER update metrics - pass only summary statistics to logger
                 logger.log_per_update(
                     self.steps_done,
-                    self.memory.beta,  # Current beta value
-                    priorities,        # Updated priorities from TD errors
-                    td_errors.cpu().numpy().flatten(),  # TD errors
-                    batch_weights.cpu().numpy().flatten()  # Importance sampling weights
+                    current_beta,
+                    priorities,
+                    td_errors.cpu().numpy().flatten(),
+                    batch_weights.cpu().numpy().flatten()
                 )
         
         return loss.item()
-    
-    def save_model(self, path, episode=None):
-        """
-        Save the model's state.
-        
-        Args:
-            path: Path to save the model
-            episode: Current episode number
-        """
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        
-        # Prepare checkpoint with all necessary information
-        checkpoint = {
-            'policy_state_dict': self.policy_network.state_dict(),
-            'target_state_dict': self.target_network.state_dict(),
-            'optimizer_state_dict': self.optimizer.state_dict(),
-            'steps_done': self.steps_done,
-            'training_steps': self.training_steps,
-            'episode': episode,
-            'loss_history': self.loss_history,
-            'epsilon_history': self.epsilon_history,
-            'reward_history': self.reward_history,
-            'priority_history': self.priority_history
-        }
-        
-        # Save the checkpoint
-        torch.save(checkpoint, path)
-        print(f"Model saved to {path}")
-    
-    def load_model(self, path):
-        """
-        Load the model's state.
-        
-        Args:
-            path: Path to load the model from
-            
-        Returns:
-            int: Episode number from the checkpoint, or None if not available
-        """
-        if not os.path.exists(path):
-            print(f"No model found at {path}")
-            return None
-        
-        # Load checkpoint - explicitly set weights_only=False to handle PyTorch 2.6+ changes
-        checkpoint = torch.load(path, map_location=self.device, weights_only=False)
-        
-        # Load network states
-        self.policy_network.load_state_dict(checkpoint['policy_state_dict'])
-        self.target_network.load_state_dict(checkpoint['target_state_dict'])
-        
-        # Load optimizer state
-        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        
-        # Load counters
-        self.steps_done = checkpoint['steps_done']
-        self.training_steps = checkpoint['training_steps']
-        
-        # Load history
-        self.loss_history = checkpoint.get('loss_history', [])
-        self.epsilon_history = checkpoint.get('epsilon_history', [])
-        self.reward_history = checkpoint.get('reward_history', [])
-        self.priority_history = checkpoint.get('priority_history', [])
-        
-        print(f"Model loaded from {path}")
-        return checkpoint.get('episode', None)
     
     def set_evaluation_mode(self, evaluate=True):
         """
@@ -489,21 +429,3 @@ if __name__ == "__main__":
         agent_per.store_transition(state, action, reward, next_state, done)
     
     print(f"Memory size: {len(agent_per.memory)}")
-    
-    # Test model saving and loading
-    # Create directories first
-    os.makedirs(config.MODEL_DIR, exist_ok=True)
-    test_path = os.path.join(config.MODEL_DIR, "test_model.pth")
-    
-    agent_per.save_model(test_path, episode=5)
-    
-    # Create a new agent and load the model
-    agent_loaded = DQNAgent(state_shape, action_space_size, use_per=True)
-    episode = agent_loaded.load_model(test_path)
-    
-    print(f"Loaded model from episode {episode}")
-    
-    # Clean up test file
-    if os.path.exists(test_path):
-        os.remove(test_path)
-        print(f"Test model file removed: {test_path}")

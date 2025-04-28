@@ -425,7 +425,13 @@ def main():
                     logger.log_text(f"Saved checkpoint at episode {episode}: {checkpoint_path}")
                 except Exception as e:
                     logger.log_text(f"Error saving checkpoint: {str(e)}")
-            
+        
+        # Final evaluation after training 
+        if logger is not None and hasattr(logger, 'per_data_buffer') and logger.per_data_buffer:
+            logger.log_text("Writing remaining PER data to disk...")
+            logger._batch_write_per()
+            logger.log_text(f"Wrote {len(logger.per_data_buffer)} PER data records")
+
         # Training completed
         logger.log_text("\nTraining completed successfully!")
         

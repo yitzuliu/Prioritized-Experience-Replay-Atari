@@ -159,9 +159,10 @@ class DQNAgent:
             if self.steps_done < self.learning_starts:
                 epsilon = self.epsilon_start 
             else:
-                # Epsilon decay formula
-                epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * \
-                          np.exp(-1. * (self.steps_done - self.learning_starts) / self.epsilon_decay)
+                # Smoother polynomial decay formula
+                # The power parameter (0.5) makes the curve more gradual than exponential decay
+                progress = min(1.0, (self.steps_done - self.learning_starts) / self.epsilon_decay)
+                epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * (1 - progress) ** 0.5
             
             # Increment step counter
             self.steps_done += 1

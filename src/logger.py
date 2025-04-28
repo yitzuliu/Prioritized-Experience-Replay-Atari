@@ -88,7 +88,7 @@ class Logger:
         self.episode_rewards: List[float] = []
         self.episode_lengths: List[int] = []
         self.episode_losses: List[float] = []
-        self.epsilon_values: List[Tuple[int, float]] = []  # (step, epsilon)
+        self.epsilon_values: List[float] = []  # 改為簡單列表而不是元組列表
         self.beta_values: List[Tuple[int, float]] = []  # (step, beta)
         
         # PER specific metrics - store summaries instead of raw data
@@ -286,45 +286,49 @@ class Logger:
             self.last_logged_beta = beta
         
         # Only log at specified frequency to reduce data volume
-        if step_num % self.per_log_frequency == 0:
-            # Calculate and record summary statistics instead of raw data
-            mean_priority = float(np.mean(priorities))
-            max_priority = float(np.max(priorities)) 
-            mean_td_error = float(np.mean(np.abs(td_errors)))
-            mean_is_weight = float(np.mean(is_weights))
-            
-            # Record the summary statistics
-            self.priority_means.append((step_num, mean_priority))
-            self.priority_maxes.append((step_num, max_priority))
-            self.td_error_means.append((step_num, mean_td_error))
-            self.is_weight_means.append((step_num, mean_is_weight))
-            
-            # Create PER data record
-            per_data = {
-                "step": step_num,
-                "beta": beta,
-                "mean_priority": mean_priority,
-                "max_priority": max_priority,
-                "mean_td_error": mean_td_error,
-                "mean_is_weight": mean_is_weight,
-                "timestamp": time.time()
-            }
-            
-            # Add to buffer instead of writing directly
-            self.per_data_buffer.append(per_data)
-            self.per_buffer_count += 1
-            
-            # Perform batch write if buffer has enough entries
-            if self.per_buffer_count >= config.PER_BATCH_SIZE:
-                self._batch_write_per()
-            
-            # Only log to console for significant changes (less frequently)
-            if step_num % (self.per_log_frequency * 20) == 0:
-                self.log_text(
-                    f"PER Update - Step: {step_num}, Beta: {beta:.4f}, "
-                    f"Mean Priority: {mean_priority:.6f}, Max Priority: {max_priority:.6f}"
-                )
+        # Calculate and record summary statistics instead of raw data
+        mean_priority = float(np.mean(priorities))
+        max_priority = float(np.max(priorities)) 
+        mean_td_error = float(np.mean(np.abs(td_errors)))
+        mean_is_weight = float(np.mean(is_weights))
+        
+        # Record the summary statistics
+        self.priority_means.append((step_num, mean_priority))
+        self.priority_maxes.append((step_num, max_priority))
+        self.td_error_means.append((step_num, mean_td_error))
+        self.is_weight_means.append((step_num, mean_is_weight))
+        
+        # Create PER data record
+        per_data = {
+            "step": step_num,
+            "beta": beta,
+            "mean_priority": mean_priority,
+            "max_priority": max_priority,
+            "mean_td_error": mean_td_error,
+            "mean_is_weight": mean_is_weight,
+            "timestamp": time.time()
+        }
+        
+        # Add to buffer instead of writing directly
+        self.per_data_buffer.append(per_data)
+        self.per_buffer_count += 1
+        
+        # Perform batch write if buffer has enough entries
+        if self.per_buffer_count >= config.PER_BATCH_SIZE:
+            self._batch_write_per()
+        
+        # Only log to console for significant changes (less frequently)
+        if step_num % (self.per_log_frequency * 20) == 0:
+            self.log_text(
+                f"PER Update - Step: {step_num}, Beta: {beta:.4f}, "
+                f"Mean Priority: {mean_priority:.6f}, Max Priority: {max_priority:.6f}"
+            )
     
+        # Perform batch write if buffer has enough entries, avoiding loss of data
+        if self.per_buffer_count >= config.PER_BATCH_SIZE or (self.per_buffer_count >= config.PER_BATCH_SIZE / 2 and step_num % (self.per_log_frequency * 5) == 0):
+            self._batch_write_per()
+
+
     def log_epsilon(self, step_num: int, epsilon: float):
         """
         Log the current epsilon value.
@@ -342,7 +346,7 @@ class Logger:
         )
         
         if significant_epsilon_change:
-            self.epsilon_values.append((step_num, epsilon))
+            self.epsilon_values.append(epsilon)  # 只保存epsilon值，不保存step
             self.last_logged_epsilon = epsilon
     
     def limit_memory_usage(self):
@@ -360,12 +364,13 @@ class Logger:
             self.episode_rewards = self.episode_rewards[trim_count:]
             self.episode_lengths = self.episode_lengths[trim_count:]
             self.episode_losses = self.episode_losses[trim_count:]
+            self.epsilon_values = self.epsilon_values[trim_count:]  # 也修剪epsilon值
             
         # Similarly trim PER metrics if they grow too large
         max_per_records = self.memory_window * 5  # Reduced from 10 to 5 for memory efficiency
         
         # More aggressive trimming for time-series metrics
-        for metric_list in [self.epsilon_values, self.beta_values, self.priority_means, 
+        for metric_list in [self.beta_values, self.priority_means, 
                            self.priority_maxes, self.td_error_means, self.is_weight_means]:
             if len(metric_list) > max_per_records:
                 # Keep first few, last few, and evenly sample the middle for visualization
@@ -574,7 +579,7 @@ class Logger:
             
         # Add exploration statistics (moved up)
         if self.epsilon_values:
-            latest_epsilon = self.epsilon_values[-1][1]
+            latest_epsilon = self.epsilon_values[-1]
             report.append(f"Current Epsilon: {latest_epsilon:.4f}")
         
         # Add loss statistics if available

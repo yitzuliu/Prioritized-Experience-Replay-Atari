@@ -429,13 +429,14 @@ class Visualizer:
         # Create figure
         fig, ax = plt.subplots(figsize=self.fig_sizes['single'])
         
-        # Plot epsilon values
+        # Plot epsilon values - FIX: epsilon_values is a simple list, not tuples
+        # Plot with episodes on x-axis and epsilon values on y-axis
         episodes = range(1, len(self.epsilon_values) + 1)
         ax.plot(episodes, self.epsilon_values, color=self.colors['epsilon'], 
                 linewidth=2, label='Epsilon')
         
         # Configure axis styling
-        self.configure_axis(ax, 'Exploration Rate (Epsilon)', 'Training Steps', 'Epsilon Value')
+        self.configure_axis(ax, 'Exploration Rate (Epsilon)', 'Episode', 'Epsilon Value')
         
         # Add some statistics as text
         if self.epsilon_values:
@@ -448,9 +449,6 @@ class Visualizer:
         
         # Add legend
         ax.legend(fontsize=self.font_sizes['legend'], framealpha=0.9)
-        
-        # Format x-axis to show steps in thousands
-        ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f'{x/1000:.0f}k'))
         
         # Set overall title
         fig.suptitle(f'Exploration Rate (Epsilon) - {self.experiment_name}', 
@@ -675,15 +673,12 @@ class Visualizer:
                 metrics_plotted += 1
                 
             elif metric_name == "epsilon" and self.epsilon_values:
-                # Plot epsilon
-                steps = range(1, len(self.epsilon_values) + 1)
-                axs[metrics_plotted].plot(steps, self.epsilon_values, color=self.colors['epsilon'], 
+                # Plot epsilon - FIX: epsilon_values is a simple list, not tuples
+                episodes = range(1, len(self.epsilon_values) + 1)
+                axs[metrics_plotted].plot(episodes, self.epsilon_values, color=self.colors['epsilon'], 
                           linewidth=2, label='Epsilon')
                 
-                self.configure_axis(axs[metrics_plotted], 'Exploration Rate (Epsilon)', 'Training Steps', 'Epsilon Value')
-                
-                # Format x-axis to show steps in thousands
-                axs[metrics_plotted].xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f'{x/1000:.0f}k'))
+                self.configure_axis(axs[metrics_plotted], 'Exploration Rate (Epsilon)', 'Episode', 'Epsilon Value')
                 
                 # Add some statistics
                 if self.epsilon_values:
@@ -702,9 +697,9 @@ class Visualizer:
                 metrics_plotted += 1
                 
             elif metric_name == "beta" and self.beta_values:
-                # Plot beta
-                steps, betas = zip(*self.beta_values)
-                axs[metrics_plotted].plot(steps, betas, color=self.colors['beta'], linewidth=2, label='Beta')
+                # Plot beta - FIX: Unpack tuple values properly
+                steps, beta_values = zip(*self.beta_values)
+                axs[metrics_plotted].plot(steps, beta_values, color=self.colors['beta'], linewidth=2, label='Beta')
                 
                 self.configure_axis(axs[metrics_plotted], 'Importance Sampling Weight (Beta)', 'Training Steps', 'Beta Value')
                 
@@ -713,8 +708,8 @@ class Visualizer:
                 
                 # Add some statistics
                 if self.beta_values:
-                    initial_beta = self.beta_values[0][1] if self.beta_values else 0
-                    current_beta = self.beta_values[-1][1] if self.beta_values else 0
+                    initial_beta = beta_values[0] if beta_values else 0
+                    current_beta = beta_values[-1] if beta_values else 0
                     stats_text = f"Initial: {initial_beta:.4f}, Current: {current_beta:.4f}"
                     axs[metrics_plotted].text(0.02, 0.95, stats_text, transform=axs[metrics_plotted].transAxes, 
                               verticalalignment='top', fontsize=self.font_sizes['stats'],
@@ -824,8 +819,8 @@ class Visualizer:
         # Add sections for each category
         for category, variables in categories.items():
             markdown += f"## {category}\n\n"
-            markdown += "| Parameter | Value | Description |\n"
-            markdown += "| --- | --- | --- |\n"
+            markdown += "| Parameter | Value | Description | Impact of Changes |\n"
+            markdown += "| --- | --- | --- | --- |\n"
             
             for var in variables:
                 if var in config_values:
@@ -833,6 +828,7 @@ class Visualizer:
                     
                     # Get the variable comments if any exist
                     var_comments = ""
+                    impact_comments = ""
                     try:
                         # Try to find the comment for this variable in config.py source
                         with open(inspect.getfile(config), 'r', encoding='utf-8') as f:
@@ -842,7 +838,15 @@ class Visualizer:
                                     # Look for comments after the variable definition
                                     comment_parts = line.split('#')
                                     if len(comment_parts) > 1:
-                                        var_comments = comment_parts[1].strip()
+                                        comment_text = comment_parts[1].strip()
+                                        # Check if the comment contains impact information (has a dash or hyphen)
+                                        if " - " in comment_text:
+                                            parts = comment_text.split(" - ", 1)
+                                            var_comments = parts[0].strip()
+                                            impact_comments = parts[1].strip()
+                                        else:
+                                            var_comments = comment_text
+                                    
                                     # Also check for comments on the previous line
                                     elif i > 0 and '#' in lines[i-1] and not '=' in lines[i-1]:
                                         var_comments = lines[i-1].split('#')[1].strip()
@@ -864,7 +868,7 @@ class Visualizer:
                     else:
                         formatted_value = str(value)
                     
-                    markdown += f"| {var} | {formatted_value} | {var_comments} |\n"
+                    markdown += f"| {var} | {formatted_value} | {var_comments} | {impact_comments} |\n"
             
             markdown += "\n"
         
@@ -923,6 +927,26 @@ class Visualizer:
             markdown += f"| MPS (Apple Metal) Available | No |\n"
         
         markdown += "\n"
+        
+        # Add a section for hyperparameter tuning suggestions
+        markdown += "## Hyperparameter Tuning Suggestions\n\n"
+        markdown += "Based on current settings, consider adjusting these parameters if facing issues:\n\n"
+        markdown += "1. **Learning Stability Issues**:\n"
+        markdown += "   - Decrease `LEARNING_RATE` to 0.0001\n"
+        markdown += "   - Increase `BATCH_SIZE` to 128\n"
+        markdown += "   - Decrease `TARGET_UPDATE_FREQUENCY` to 4000\n\n"
+        
+        markdown += "2. **Exploration Issues**:\n"
+        markdown += "   - Increase `EPSILON_END` to 0.15-0.2\n"
+        markdown += "   - Increase `EPSILON_DECAY` to slow down exploration decay\n\n"
+        
+        markdown += "3. **PER Performance Issues**:\n"
+        markdown += "   - Adjust `ALPHA` between 0.4-0.8 to control prioritization strength\n"
+        markdown += "   - Increase `BETA_FRAMES` to slow down bias correction\n\n"
+        
+        markdown += "4. **Memory Issues**:\n"
+        markdown += "   - Decrease `MEMORY_CAPACITY` if experiencing RAM limitations\n"
+        markdown += "   - Adjust `FRAME_WIDTH` and `FRAME_HEIGHT` for smaller state representations\n\n"
         
         # Save the Markdown to a file
         if save:

@@ -353,6 +353,9 @@ def main():
     # Initialize logger
     logger = Logger(experiment_name=experiment_name)
     
+    # Initialize visualizer - Added this line to fix the error
+    visualizer = Visualizer(logger_instance=logger)
+    
     #configuration output
     visualizer.generate_training_config_markdown()
 

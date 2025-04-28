@@ -17,22 +17,22 @@ import os
 
 # Basic environment settings
 # 基本環境設置
-ENV_NAME = 'ALE/IceHockey-v5'  # 遊戲環境名稱 (更改此值可切換到其他 Atari 遊戲)
-ACTION_SPACE_SIZE = 18  # IceHockey has 18 possible actions (冰球遊戲有18個可能的動作，與遊戲環境綁定)
-DIFFICULTY = 0  # Game difficulty level from 0-4, where 0 is easiest (遊戲難度等級，0-4，0為最簡單，提高可增加挑戰性)
+ENV_NAME = 'ALE/IceHockey-v5'  # Environment name (游戲環境名稱)
+ACTION_SPACE_SIZE = 18  # Number of possible actions in Ice Hockey (冰球游戲可執行的動作數量)
+DIFFICULTY = 0  # Game difficulty level from 0-4, 0 is easiest (游戲難度等級，0-4，0為最簡單) - 增加難度可測試算法在更複雜環境中的表現，但會增加學習難度
 
 # Frame processing settings
 # 幀處理設置
-FRAME_WIDTH = 84  # Downscaled from native 160 (從原始160縮小到84，增加可提供更詳細的輸入但增加計算負擔)
-FRAME_HEIGHT = 84  # Downscaled from native 210 (從原始210縮小到84，增加可提供更詳細的輸入但增加計算負擔)
-FRAME_STACK = 4  # Number of frames to stack (幀堆疊數量，增加可提高時間序列信息捕捉能力，但增加計算負擔)
-FRAME_SKIP = 4  # Matches the environment's built-in frameskip for v5 (與環境內建的v5版本跳幀設置匹配，減少可增加訓練精度但降低速度)
-NOOP_MAX = 30  # Maximum number of no-op actions at the start of an episode (開始時最大無操作動作數，增加可提高初始狀態多樣性)
+FRAME_WIDTH = 84  # Width of processed frame, downscaled from 160 (處理後的幀寬度，從160縮小) - 增加會提供更詳細的視覺信息，但增加網絡計算負擔
+FRAME_HEIGHT = 84  # Height of processed frame, downscaled from 210 (處理後的幀高度，從210縮小) - 同上，更高解析度需要更大的網絡結構
+FRAME_STACK = 4  # Number of frames to stack for temporal information (堆疊的幀數量，用於時間序列信息) - 增加可捕捉更長時間序列但增加記憶體使用，減少可能導致時間信息不足
+FRAME_SKIP = 4  # Frames to skip between agent actions (智能體動作之間跳過的幀數) - 減少可增加決策頻率但訓練較慢，增加可加速訓練但可能錯過重要狀態
+NOOP_MAX = 30  # Maximum number of no-op actions at episode start (回合開始時最大無操作動作數) - 增加有助於探索更多起始狀態，但可能浪費訓練步數
 
 # Visualization settings
 # 視覺化設置
-RENDER_MODE = None  # No rendering during training for maximum speed (訓練期間不渲染以提高速度，設為'human'可觀察但會降低速度)
-TRAINING_MODE = True  # Ensure render_mode is None during training (確保訓練模式下不渲染，設為False會影響性能)
+RENDER_MODE = None  # Render mode for visualization, None for training speed (渲染模式，訓練時設為None以提高速度) - 設為'human'可觀察智能體但會大幅降低訓練速度
+TRAINING_MODE = True  # Training mode flag to disable rendering (訓練模式標誌，禁用渲染) - 設為False將啟用渲染，僅用於測試
 
 ###############################
 # DEEP Q-LEARNING PARAMETERS
@@ -41,24 +41,24 @@ TRAINING_MODE = True  # Ensure render_mode is None during training (確保訓練
 
 # Core DQN parameters
 # 核心DQN參數
-LEARNING_RATE = 0.00025  # Learning rate for Adam optimizer (Adam優化器的學習率，降低以提高穩定性)
-GAMMA = 0.99  # Discount factor (折扣因子，保持為0.99以平衡短期與長期獎勵)
-BATCH_SIZE = 32  # Batch size for training (批次大小，降低可減少記憶體使用並提高更新頻率)
-MEMORY_CAPACITY = 100000  # Experience replay memory size (降低記憶體容量以減少RAM使用)
-TARGET_UPDATE_FREQUENCY = 8000  # Target network update frequency (更頻繁地更新目標網絡以加速學習 來自Nature DQN論文的合適值)
-TRAINING_EPISODES = 5000  # Total number of training episodes (降低以更快完成訓練)
+LEARNING_RATE = 0.00025  # Learning rate for Adam optimizer (Adam優化器的學習率) - 增加可加快學習但可能不穩定，減少可提高穩定性但學習較慢
+GAMMA = 0.99  # Discount factor for future rewards (未來獎勵的折扣因子) - 增加使智能體更重視長期獎勵，減少則更關注即時獎勵
+BATCH_SIZE = 64  # Batch size for training updates (訓練更新的批次大小) - 增加可提供更穩定的梯度估計但增加記憶體消耗，減少可能導致訓練不穩定
+MEMORY_CAPACITY = 200000  # Experience replay memory capacity (經驗回放記憶體容量) - 增加可儲存更多多樣化經驗但增加記憶體用量，減少可能導致過度擬合近期經驗
+TARGET_UPDATE_FREQUENCY = 8000  # Steps between target network updates (目標網絡更新間隔步數) - 增加提高訓練穩定性但降低學習速度，減少提高學習速度但可能導致不穩定振盪
+TRAINING_EPISODES = 10000  # Total training episodes (總訓練回合數) - 增加可提高最終性能但延長訓練時間，減少可加快實驗但可能無法充分學習
 
 # Exploration parameters
 # 探索參數
-EPSILON_START = 1.0  # Initial exploration rate (初始探索率，完全隨機)
-EPSILON_END = 0.1  # Final exploration rate (提高最終探索率以持續探索環境)
-EPSILON_DECAY = 500000  # Steps over which epsilon decays (加速探索率衰減以更快利用學到的策略)
-DEFAULT_EVALUATE_MODE = False  # Default evaluation mode (默認評估模式，True時關閉探索僅用於評估，不影響訓練)
+EPSILON_START = 1.0  # Initial exploration rate (初始探索率) - 保持較高可確保初期充分探索環境，降低則更早利用已知策略
+EPSILON_END = 0.1  # Final exploration rate (最終探索率) - 增加可確保持續探索新策略，減少則更專注於利用學到的策略
+EPSILON_DECAY = 1000000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
+DEFAULT_EVALUATE_MODE = False  # Default evaluation mode (默認評估模式) - 設為True時禁用探索，僅用於評估不影響訓練
 
 # Training control parameters
 # 訓練控制參數
-LEARNING_STARTS = 10000  # Steps before starting learning (論文中常用的值)
-UPDATE_FREQUENCY = 4  # Network update frequency (與Nature DQN論文一致)
+LEARNING_STARTS = 10000  # Steps before starting learning (開始學習前的步數) - 增加可收集更多隨機經驗確保多樣性，減少可加速開始學習
+UPDATE_FREQUENCY = 4  # Steps between network updates (網絡更新間隔步數) - 減少可更頻繁更新網絡加速學習，增加可減少計算負擔但可能減慢學習
 
 ###############################
 # PRIORITIZED EXPERIENCE REPLAY PARAMETERS
@@ -67,60 +67,60 @@ UPDATE_FREQUENCY = 4  # Network update frequency (與Nature DQN論文一致)
 
 # Whether to use Prioritized Experience Replay
 # 是否使用優先經驗回放
-USE_PER = True  # Enable/disable PER (設為False則使用標準均勻採樣，PER通常提高樣本效率但增加計算複雜度)
+USE_PER = True  # Enable Prioritized Experience Replay (啟用優先經驗回放) - 設為False時使用標準均勻採樣，PER通常提升樣本效率但增加計算複雜度
 
 # PER hyperparameters
 # PER超參數
-ALPHA = 0.6  # Priority exponent (優先級指數，增加會強化高誤差樣本的優先級，降低會趨近於均勻採樣)
-BETA_START = 0.4  # Initial importance sampling weight (初始重要性採樣權重，提高可減少偏差但可能降低學習效率)
-BETA_FRAMES = 400000  # 將這個值增加到 400,000 以降低 beta 上升速度
-EPSILON_PER = 1e-6  # Small constant for TD-errors (TD誤差的小常數，確保優先級非零，調整通常影響不大)
+ALPHA = 0.6  # Priority exponent for sampling probability (優先級指數，用於採樣概率) - 增加強化高誤差樣本採樣頻率，減少使採樣更接近均勻
+BETA_START = 0.4  # Initial importance sampling weight value (初始重要性採樣權重值) - 增加可減少初期偏差但可能減慢收斂，保持低值使初期學習更聚焦於高誤差樣本
+BETA_FRAMES = 400000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
+EPSILON_PER = 1e-6  # Small constant for priority calculation (優先級計算的小常數) - 確保所有經驗都有非零優先級，防止某些經驗永不被採樣
 
 # SumTree settings
 # 總和樹設置
-TREE_CAPACITY = MEMORY_CAPACITY  # Size of the sum tree (與記憶體容量保持一致)
-DEFAULT_NEW_PRIORITY = 1.0  # Default priority for new experiences (新經驗的默認優先級)
+TREE_CAPACITY = MEMORY_CAPACITY  # Size of the sum tree (與記憶體容量一致) - 應與記憶體容量保持一致，否則可能導致記憶體使用不一致
+DEFAULT_NEW_PRIORITY = 1.0  # Default priority for new experiences (新經驗的默認優先級) - 設置新經驗的初始優先級，影響新加入經驗被採樣的機會
 
 # PER Logging Configuration
-PER_LOG_FREQUENCY = 100  # How often to log PER metrics (in steps) (記錄PER指標的頻率，以步數為單位)
-PER_BATCH_SIZE = 50  # Batch size for PER data writes (number of records) (PER數據寫入的批次大小)
+PER_LOG_FREQUENCY = 100  # Steps between PER metrics logging (PER指標記錄的步數間隔) - 減少可提供更詳細的PER指標記錄但增加日誌大小
+PER_BATCH_SIZE = 50  # Batch size for PER data writes (PER數據寫入的批次大小) - 增加可減少I/O操作但增加記憶體使用，減少可減輕記憶體負擔但增加I/O頻率
 
 ###############################
 # NEURAL NETWORK SETTINGS
 # 神經網絡設置
 ###############################
 
-USE_ONE_CONV_LAYER = False  # Use 1 convolutional layer (使用1個卷積層，簡化模型降低計算量，但可能降低性能)
-USE_TWO_CONV_LAYERS = False  # Use 2 convolutional layers (使用2個卷積層，平衡複雜度和性能)
-USE_THREE_CONV_LAYERS = True  # Use full 3-layer architecture (使用3層架構，增加模型複雜度和表達能力，提高性能但需要更多計算資源)
+USE_ONE_CONV_LAYER = False  # Whether to use a single convolutional layer (是否使用單個卷積層) - 簡化模型結構，降低計算需求但可能減弱特徵提取能力
+USE_TWO_CONV_LAYERS = False  # Whether to use two convolutional layers (是否使用兩個卷積層) - 中等複雜度，平衡計算效率和特徵提取能力
+USE_THREE_CONV_LAYERS = True  # Whether to use three convolutional layers (是否使用三個卷積層) - 增加模型複雜度和表達能力，提高特徵提取但增加計算需求
 
 # First convolutional layer parameters
 # 第一卷積層參數
-CONV1_CHANNELS = 32  # First conv layer output channels (第一卷積層輸出通道數，增加可提取更多特徵但增加計算負擔)
-CONV1_KERNEL_SIZE = 8  # First conv layer kernel size (第一卷積層內核大小，增加可捕捉更大範圍的特徵)
-CONV1_STRIDE = 4  # First conv layer stride (第一卷積層步幅，減少可保留更多信息但增加特徵圖大小和計算量)
+CONV1_CHANNELS = 32  # Number of filters in first conv layer (第一卷積層過濾器數量) - 增加可提取更多基本特徵但增加計算量
+CONV1_KERNEL_SIZE = 8  # Kernel size for first conv layer (第一卷積層核大小) - 增加可捕捉更大視野範圍的特徵，減少則更專注於細節
+CONV1_STRIDE = 4  # Stride for first conv layer (第一卷積層步幅) - 增加可減少輸出特徵圖大小節省計算，減少可保留更多空間信息但增加計算量
 
 # Second convolutional layer parameters
 # 第二卷積層參數
-CONV2_CHANNELS = 64  # Second conv layer output channels (第二卷積層輸出通道數，增加可提取更複雜特徵但增加參數量)
-CONV2_KERNEL_SIZE = 4  # Second conv layer kernel size (第二卷積層內核大小，調整可改變特徵提取範圍和細節捕捉能力)
-CONV2_STRIDE = 2  # Second conv layer stride (第二卷積層步幅，調整可平衡特徵精細度和計算效率)
+CONV2_CHANNELS = 64  # Number of filters in second conv layer (第二卷積層過濾器數量) - 增加可提取更複雜的特徵組合但增加計算需求
+CONV2_KERNEL_SIZE = 4  # Kernel size for second conv layer (第二卷積層核大小) - 影響中階特徵的感受野大小
+CONV2_STRIDE = 2  # Stride for second conv layer (第二卷積層步幅) - 控制特徵圖尺寸減少的速率
 
 # Third convolutional layer parameters
 # 第三卷積層參數
-CONV3_CHANNELS = 64  # Third conv layer output channels (第三卷積層輸出通道數，增加可提取更高級特徵但增加參數量)
-CONV3_KERNEL_SIZE = 3  # Third conv layer kernel size (第三卷積層內核大小，調整可改變特徵提取範圍和細節程度)
-CONV3_STRIDE = 1  # Third conv layer stride (第三卷積層步幅，保持為1通常可保留更多空間信息)
+CONV3_CHANNELS = 64  # Number of filters in third conv layer (第三卷積層過濾器數量) - 提取高級特徵的能力，增加可改善複雜模式識別
+CONV3_KERNEL_SIZE = 3  # Kernel size for third conv layer (第三卷積層核大小) - 較小的核專注於精細特徵整合
+CONV3_STRIDE = 1  # Stride for third conv layer (第三卷積層步幅) - 保持為1通常可在最後卷積層保留更完整的空間信息
 
 # Fully connected layer and gradient settings
 # 全連接層和梯度設置
-FC_SIZE = 256  # Fully connected layer size (降低全連接層大小以減少參數量)
-GRAD_CLIP_NORM = 5.0  # Maximum gradient norm (降低梯度范數上限以提高穩定性)
+FC_SIZE = 512  # Size of fully connected layer (全連接層大小) - 增加提高模型表示能力但增加參數量，減少可降低過擬合風險但可能降低表達能力
+GRAD_CLIP_NORM = 5.0  # Gradient clipping norm (梯度裁剪范數) - 防止梯度爆炸，增加允許更大的更新步長但可能導致不穩定，減少提高穩定性但可能減緩學習
 
 # Evaluation settings
 # 評估設置
-EVAL_EPISODES = 20  # Number of episodes for evaluation (評估的回合數，增加可提高評估準確性但耗時更長)
-EVAL_FREQUENCY = 100  # Evaluation frequency during training (訓練期間評估的頻率，降低可更頻繁評估但延長訓練時間)
+EVAL_EPISODES = 20  # Number of episodes for each evaluation (每次評估的回合數) - 增加可提供更可靠的評估結果但延長評估時間
+EVAL_FREQUENCY = 100  # Episodes between evaluations (評估間隔的回合數) - 減少可更頻繁評估訓練進度但延長總訓練時間，增加可加速訓練但降低進度監控頻率
 
 ###############################
 # LOGGER SETTINGS
@@ -129,22 +129,22 @@ EVAL_FREQUENCY = 100  # Evaluation frequency during training (訓練期間評估
 
 # System resource management
 # 系統資源管理
-MEMORY_THRESHOLD_PERCENT = 75  # Memory usage threshold % (內存使用閾值百分比，降低可更保守地使用記憶體但可能限制性能)
+MEMORY_THRESHOLD_PERCENT = 75  # Memory usage threshold percentage (內存使用閾值百分比) - 降低可更保守地控制記憶體使用但可能限制性能，增加允許使用更多記憶體但風險更高
 
 # Directory configurations
 # 目錄配置
-RESULTS_DIR = "results"  # Main results directory (主要結果目錄，可更改路徑但需確保權限)
-LOG_DIR = os.path.join(RESULTS_DIR, "logs")  # Logs directory (日誌目錄，存儲訓練過程記錄)
-MODEL_DIR = os.path.join(RESULTS_DIR, "models")  # Models directory (模型目錄，存儲訓練的模型)
-PLOT_DIR = os.path.join(RESULTS_DIR, "plots")  # Plots directory (圖表目錄，存儲視覺化結果)
-DATA_DIR = os.path.join(RESULTS_DIR, "data")  # Data directory (數據目錄，存儲原始數據和處理結果)
+RESULTS_DIR = "results"  # Main results directory (主要結果目錄) - 保存所有實驗結果的主目錄
+LOG_DIR = os.path.join(RESULTS_DIR, "logs")  # Directory for log files (日誌文件目錄)
+MODEL_DIR = os.path.join(RESULTS_DIR, "models")  # Directory for model checkpoints (模型檢查點目錄)
+PLOT_DIR = os.path.join(RESULTS_DIR, "plots")  # Directory for visualization plots (可視化圖表目錄)
+DATA_DIR = os.path.join(RESULTS_DIR, "data")  # Directory for data storage (數據存儲目錄)
 
 # Logger settings
 # 日誌記錄器設置
-ENABLE_FILE_LOGGING = False  # Enable file logging (啟用文件日誌記錄，設為True可將日誌寫入文件)
-LOGGER_SAVE_INTERVAL = 50  # Logger save interval (日誌保存間隔，降低可更頻繁保存但增加I/O操作)
-LOGGER_MEMORY_WINDOW = 1000  # Max records in memory (內存中保留的最大記錄數量，增加可記錄更多歷史但增加記憶體使用)
-LOGGER_BATCH_SIZE = 30  # Records before disk write (累積多少記錄後寫入磁盤，增加可減少I/O頻率但延遲數據持久化)
-LOGGER_DETAILED_INTERVAL = 10  # Detailed progress print frequency (詳細進度打印頻率，降低可獲得更頻繁的進度更新)
-LOGGER_MAJOR_METRICS = ["reward", "loss", "epsilon", "beta"]  # Major metrics for visualization (主要視覺化指標，可根據需求添加或刪除)
-VISUALIZATION_SAVE_INTERVAL = 100  # How often to save intermediate visualizations (每隔多少回合保存中間可視化結果，降低可更頻繁保存但增加I/O操作)
+ENABLE_FILE_LOGGING = False  # Whether to write logs to files (是否將日誌寫入文件) - 啟用可保存完整訓練記錄但增加I/O操作，禁用可減輕系統負擔但丟失歷史記錄
+LOGGER_SAVE_INTERVAL = 50  # Episodes between logger saves (日誌保存間隔的回合數) - 減少可更頻繁保存進度但增加I/O操作，增加可減輕I/O負擔但風險更高
+LOGGER_MEMORY_WINDOW = 1000  # Maximum records kept in memory (内存中保留的最大記錄數) - 增加可存儲更長的歷史記錄但增加記憶體使用，減少可節省記憶體但限制可存取的歷史數據
+LOGGER_BATCH_SIZE = 30  # Records to accumulate before writing (累積多少記錄後寫入磁盤) - 增加可減少I/O頻率但延遲數據持久化，減少可更快保存記錄但增加I/O頻率
+LOGGER_DETAILED_INTERVAL = 10  # Episodes between detailed reports (詳細報告間隔的回合數) - 減少提供更頻繁的詳細進度報告但增加輸出量，增加可減少輸出量但降低監控粒度
+LOGGER_MAJOR_METRICS = ["reward", "loss", "epsilon", "beta"]  # Main metrics to plot (主要繪圖指標) - 自定義要在概覽圖中顯示的主要指標
+VISUALIZATION_SAVE_INTERVAL = 100  # Episodes between visualization saves (可視化保存間隔的回合數) - 減少可更頻繁生成可視化但增加I/O和計算負擔，增加可減輕負擔但減少視覺反饋

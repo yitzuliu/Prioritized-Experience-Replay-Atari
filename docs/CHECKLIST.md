@@ -4,28 +4,34 @@ This document outlines the detailed plan for implementing a DQN with Prioritized
 
 *此文件記錄實現帶有優先經驗回放 (PER) 的 DQN 來玩 Atari 冰球遊戲的詳細計劃。*
 
-## Implementation Goals
+## Implementation Goals ✅
 
-1. **Beginner-friendly Algorithm Implementation**
+1. **Beginner-friendly Algorithm Implementation** 
    - Focus on clarity and readability of algorithm implementation
    - Provide educational-level English comments with Chinese annotations
    - Include pseudocode for each core algorithm
    - Ensure perfect execution beyond 5,000 steps for observable learning effects
 
-2. **Data Visualization**
+2. **Data Visualization** 
    - Provide reward curves during the training process
    - Display experience replay priority distribution
    - Present charts for loss function and other relevant metrics
 
-3. **Multi-platform Compatibility**
+3. **Multi-platform Compatibility** 
    - Ensure code runs on CPU, GPU, and Apple M-series chips
    - Automatically detect available devices and optimize performance
 
-4. **GitHub Preparation**
+4. **GitHub Preparation** 
    - Complete documentation and examples
    - Well-organized code structure
 
 *實作目標：初學者友好的演算法實現、資料可視化、多平台兼容性、GitHub準備*
+
+## Implementation Status
+
+All planned components are now fully implemented and operational. The implementation follows the original design closely while ensuring optimal performance across different platforms.
+
+*所有計劃的組件現已全部實現並正常運行。實現嚴格遵循原始設計，同時確保在不同平台上的最佳性能。*
 
 ## Pseudocode
 
@@ -97,39 +103,6 @@ Data Structure: SumTree
         * Else, subtract left_child.sum from value, go right
       - Return index, priority and data at leaf
 ```
-
-## Implementation Details for Our Project
-
-### Core Components
-
-1. **SumTree (src/sumtree.py)**
-   - Efficient binary tree for priority-based sampling
-   - Key methods:
-     - `_propagate_priority_change`: Updates tree when priority changes
-     - `_find_priority_leaf_index`: Locates leaf based on priority
-     - `add`: Adds new experience with priority
-     - `update_priority`: Updates existing experience priority
-     - `get_experience_by_priority`: Retrieves experience based on sampled priority
-
-2. **PER Memory (src/per_memory.py)**
-   - Implements transition storage with prioritized sampling
-   - Manages importance sampling weights with annealing β parameter
-   - Key methods:
-     - `add`: Stores transitions with maximum initial priority
-     - `sample`: Samples batch based on priorities
-     - `update_priorities`: Updates priorities based on new TD errors
-     - `update_beta`: Linearly increases β from β_start to 1.0
-
-3. **DQN Agent (src/dqn_agent.py)**
-   - Integrates PER with DQN algorithm
-   - Applies importance sampling weights to loss calculation
-   - Key methods:
-     - `select_action`: Implements ε-greedy policy
-     - `optimize_model`: Performs learning step with PER
-
-4. **Training Loop (train.py)**
-   - Coordinates training process with appropriate PER integration
-   - Manages logging of PER-specific metrics
 
 ## Hyperparameters for PER
 

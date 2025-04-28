@@ -16,11 +16,12 @@ This project implements a Deep Q-Network (DQN) with Prioritized Experience Repla
 
 - **Complete PER Implementation**: Using SumTree data structure for efficient priority-based experience storage and sampling
 - **Multi-Platform Compatibility**: Automatic detection and utilization of CPU, CUDA (NVIDIA GPU), or MPS (Apple Silicon)
-- **Detailed Visualization**: Provides visualizations of training progress, rewards, losses, and priority distributions
+- **Detailed Visualization**: Provides visualizations of training progress, rewards, losses, priority distributions, and TD errors
 - **Educational Implementation**: Includes detailed bilingual (English/Chinese) comments and algorithm explanations suitable for learning and research
 - **Efficient Training**: Optimized environment preprocessing, experience sampling, and model architecture
+- **Graceful Interruption Handling**: Training can be safely interrupted (Ctrl+C) with automatic checkpoint saving and resuming capability
 
-*主要特點：完整的 PER 實現、多平台兼容、詳細視覺化、教育性實現和*
+*主要特點：完整的 PER 實現、多平台兼容、詳細視覺化、教育性實現、高效訓練與優雅的中斷處理*
 
 ## 🛠️ Installation & Setup (安裝與設置)
 
@@ -29,7 +30,8 @@ This project implements a Deep Q-Network (DQN) with Prioritized Experience Repla
 - Python 3.8+
 - PyTorch 2.0+
 - Gymnasium (newer version of OpenAI Gym)
-- Other necessary dependencies
+- NumPy, Matplotlib, OpenCV
+- Other dependencies listed in requirements.txt
 
 ### Installation Steps (安裝步驟)
 
@@ -150,7 +152,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 👨‍💻 Author (作者)
 
-Your Name - [@yourgithub](https://github.com/yourgithub)
+Yitzu Liu - [@yitzuliu](https://github.com/yitzuliu)
 
 ## 🙏 Acknowledgements (致謝)
 

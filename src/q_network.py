@@ -180,6 +180,14 @@ class QNetwork(nn.Module):
             x = torch.tensor(x, dtype=torch.float32)
         
         x = x.to(self.device)
+
+        # Handle 5D input from FrameStackObservation [batch_size, stack_size, H, W, 1]
+        if x.dim() == 5 and x.shape[-1] == 1:
+            # Remove the last dimension
+            x = x.squeeze(-1)
+        # Handle HWC format if present
+        elif x.dim() == 4 and x.shape[1] not in [1, 4]:  # Not in CHW format
+            x = x.permute(0, 3, 1, 2)
         
         # Apply convolutional layers with ReLU activations
         x = F.relu(self.conv1(x))

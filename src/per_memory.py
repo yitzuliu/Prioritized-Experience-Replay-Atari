@@ -99,7 +99,7 @@ class PERMemory:
         # Calculate the progress of training
         progress = min(1.0, frame_idx / self.beta_frames)
         # Adjust beta using a non-linear function
-        adjusted_progress = progress ** 2  # Non-linear scaling
+        adjusted_progress = progress ** config.BETA_EXPONENT  # Non-linear scaling
         self.beta = min(1.0, self.beta_start + adjusted_progress * (1.0 - self.beta_start))
     
     def _calculate_priority(self, td_error):

@@ -54,7 +54,7 @@ class DQNAgent:
                  memory_capacity=config.MEMORY_CAPACITY,
                  batch_size=config.BATCH_SIZE,
                  target_update_frequency=config.TARGET_UPDATE_FREQUENCY,
-                 use_per=config.USE_PER, frame_skip=config.FRAME_SKIP,
+                 use_per=config.USE_PER,
                  per_log_frequency=config.PER_LOG_FREQUENCY,
                  evaluate_mode=config.DEFAULT_EVALUATE_MODE,
                  learning_starts=config.LEARNING_STARTS):
@@ -87,7 +87,6 @@ class DQNAgent:
         self.target_update_frequency = target_update_frequency
         self.use_per = use_per
         self.evaluate_mode = evaluate_mode
-        self.frame_skip = config.FRAME_SKIP
         self._epsilon = epsilon_start 
         self.per_log_frequency = per_log_frequency
         self.learning_starts = learning_starts
@@ -150,6 +149,17 @@ class DQNAgent:
         # /* TRAINING LOOP - Step 4.b.i */
         # Select action a_t using ε-greedy policy based on Q(s_t; θ)
         
+        # Convert state to PyTorch tensor for network forward pass
+        if isinstance(state, np.ndarray):
+            # Check if state needs conversion to CHW format based on shape
+            if state.ndim == 3 and state.shape[-1] in [1, 3, 4]:  # If channels dimension is last (HWC format)
+                # Rearrange from [H, W, C] to [C, H, W]
+                state = np.transpose(state, (2, 0, 1))
+            
+            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        else:
+            state_tensor = state.unsqueeze(0).to(self.device) if state.dim() == 3 else state.to(self.device)
+
         # Calculate current epsilon
         if evaluate:
             # Use greedy policy for evaluation
@@ -174,17 +184,6 @@ class DQNAgent:
         # Update instance epsilon value
         self._epsilon = epsilon
         
-        # Convert state to PyTorch tensor for network forward pass
-        if isinstance(state, np.ndarray):
-            # Check if state is in HWC format and needs to be converted to CHW format
-            if state.shape[-1] == 3 or state.shape[-1] == 4:  # If channels dimension is last
-                # Rearrange from [H, W, C] to [C, H, W]
-                state = np.transpose(state, (2, 0, 1))
-            
-            state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        else:
-            state_tensor = state.unsqueeze(0).to(self.device) if state.dim() == 3 else state.to(self.device)
-        
         # Epsilon-greedy action selection
         if random.random() > epsilon:
             # Exploit: select best action (choose a_t = argmax_a Q(s_t, a; θ))
@@ -197,7 +196,6 @@ class DQNAgent:
         else:
             # Explore: select random action for exploration
             action = random.randrange(self.action_space_size)
-        
         return action
     
     def store_transition(self, state, action, reward, next_state, done):

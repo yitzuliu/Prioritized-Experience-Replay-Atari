@@ -73,7 +73,8 @@ USE_PER = True  # Enable Prioritized Experience Replay (啟用優先經驗回放
 # PER超參數
 ALPHA = 0.6  # Priority exponent for sampling probability (優先級指數，用於採樣概率) - 增加強化高誤差樣本採樣頻率，減少使採樣更接近均勻
 BETA_START = 0.4  # Initial importance sampling weight value (初始重要性採樣權重值) - 增加可減少初期偏差但可能減慢收斂，保持低值使初期學習更聚焦於高誤差樣本
-BETA_FRAMES = 400000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
+BETA_FRAMES = 3600000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
+BETA_EXPONENT = 1.5  # Exponent for beta increase (beta增加的指數) - 增加可使beta增長更快，減少則增長更平緩
 EPSILON_PER = 1e-6  # Small constant for priority calculation (優先級計算的小常數) - 確保所有經驗都有非零優先級，防止某些經驗永不被採樣
 
 # SumTree settings

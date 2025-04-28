@@ -421,8 +421,8 @@ def main():
                         include_memory=False,
                         metadata={'checkpoint_episode': episode}
                     )
-                    
                     logger.log_text(f"Saved checkpoint at episode {episode}: {checkpoint_path}")
+                    print("=" * 20)
                 except Exception as e:
                     logger.log_text(f"Error saving checkpoint: {str(e)}")
         

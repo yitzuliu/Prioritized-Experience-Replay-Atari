@@ -1,8 +1,8 @@
-# Prioritized Experience Replay DQN for Atari Ice Hockey - Implementation Plan
+# Prioritized Experience Replay DQN for Atari Games - Implementation Plan
 
-This document outlines the detailed plan for implementing a DQN with Prioritized Experience Replay (PER) for playing Atari Ice Hockey.
+This document outlines the detailed plan for implementing a DQN with Prioritized Experience Replay (PER) for playing Atari games.
 
-*此文件記錄實現帶有優先經驗回放 (PER) 的 DQN 來玩 Atari 冰球遊戲的詳細計劃。*
+*此文件記錄實現帶有優先經驗回放 (PER) 的 DQN 來玩 Atari 遊戲的詳細計劃。*
 
 ## Implementation Goals ✅
 

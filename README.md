@@ -1,16 +1,16 @@
-# Prioritized Experience Replay (PER) for Atari Ice Hockey
+# Prioritized Experience Replay (PER) for Atari Games
 
-Training a Deep Q-Network (DQN) to play Atari Ice Hockey using Prioritized Experience Replay (PER) technique.
+Training a Deep Q-Network (DQN) to play Atari games using Prioritized Experience Replay (PER) technique.
 
-使用優先經驗回放 (PER) 技術訓練深度 Q 網絡 (DQN) 學習玩 Atari 冰球遊戲。
+使用優先經驗回放 (PER) 技術訓練深度 Q 網絡 (DQN) 學習玩 Atari 遊戲。
 
-![Atari Ice Hockey](https://gym.openai.com/videos/2019-10-21--mqt8Qj1mwo/ALE-IceHockey-v5/poster.jpg)
+![Atari Game Example](https://gymnasium.farama.org/_images/ms_pacman.gif)
 
 ## 📝 Project Overview (專案概述)
 
-This project implements a Deep Q-Network (DQN) with Prioritized Experience Replay (PER) to play the Atari Ice Hockey game. PER is an enhanced experience replay mechanism that prioritizes sampling of high-value experiences based on their importance (measured by TD-error). This approach significantly improves DQN's learning efficiency and performance.
+This project implements a Deep Q-Network (DQN) with Prioritized Experience Replay (PER) to play Atari games. PER is an enhanced experience replay mechanism that prioritizes sampling of high-value experiences based on their importance (measured by TD-error). This approach significantly improves DQN's learning efficiency and performance.
 
-本專案實現了一個帶有優先經驗回放 (PER) 的深度 Q 網絡 (DQN) 來玩 Atari 冰球遊戲。優先經驗回放是一種改進型經驗回放機制，它根據樣本的重要性（由 TD 誤差測量）來優先採樣高價值的經驗。這種方法可以顯著提高 DQN 的學習效率和性能。
+本專案實現了一個帶有優先經驗回放 (PER) 的深度 Q 網絡 (DQN) 來玩 Atari 遊戲。優先經驗回放是一種改進型經驗回放機制，它根據樣本的重要性（由 TD 誤差測量）來優先採樣高價值的經驗。這種方法可以顯著提高 DQN 的學習效率和性能。
 
 ### 💡 Key Features (主要特點)
 
@@ -37,8 +37,8 @@ This project implements a Deep Q-Network (DQN) with Prioritized Experience Repla
 
 1. Clone the repository
 ```bash
-git clone https://github.com/yourusername/atari-ice-hockey-per.git
-cd atari-ice-hockey-per
+git clone https://github.com/yourusername/atari-per-dqn.git
+cd atari-per-dqn
 ```
 
 2. Install required dependencies

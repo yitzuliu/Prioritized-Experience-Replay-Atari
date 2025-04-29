@@ -1,10 +1,10 @@
 """
-Configuration file for DQN training on Atari Ice Hockey.
+Configuration file for DQN training on Atari games.
 
 This file contains all hyperparameters and settings used throughout the project,
 organized by category for better readability and management.
 
-DQN 在 Atari 冰球遊戲上訓練的配置文件。
+DQN 在 Atari 遊戲上訓練的配置文件。
 
 本文件包含項目中使用的所有超參數和設置，按類別組織以提高可讀性和可管理性。
 """
@@ -17,8 +17,8 @@ import os
 
 # Basic environment settings
 # 基本環境設置
-ENV_NAME = 'ALE/IceHockey-v5'  # Environment name (游戲環境名稱)
-ACTION_SPACE_SIZE = 18  # Number of possible actions in Ice Hockey (冰球游戲可執行的動作數量)
+ENV_NAME = 'ALE/MsPacman-v5'  # Environment name (游戲環境名稱)
+ACTION_SPACE_SIZE = 9  # Number of possible actions in the game (遊戲中可能的動作數量)
 DIFFICULTY = 0  # Game difficulty level from 0-4, 0 is easiest (游戲難度等級，0-4，0為最簡單) - 增加難度可測試算法在更複雜環境中的表現，但會增加學習難度
 
 # Frame processing settings
@@ -43,21 +43,21 @@ TRAINING_MODE = True  # Training mode flag to disable rendering (訓練模式標
 # 核心DQN參數
 LEARNING_RATE = 0.00025  # Learning rate for Adam optimizer (Adam優化器的學習率) - 增加可加快學習但可能不穩定，減少可提高穩定性但學習較慢
 GAMMA = 0.99  # Discount factor for future rewards (未來獎勵的折扣因子) - 增加使智能體更重視長期獎勵，減少則更關注即時獎勵
-BATCH_SIZE = 64  # Batch size for training updates (訓練更新的批次大小) - 增加可提供更穩定的梯度估計但增加記憶體消耗，減少可能導致訓練不穩定
+BATCH_SIZE = 32  # Batch size for training updates (訓練更新的批次大小) - 增加可提供更穩定的梯度估計但增加記憶體消耗，減少可能導致訓練不穩定
 MEMORY_CAPACITY = 200000  # Experience replay memory capacity (經驗回放記憶體容量) - 增加可儲存更多多樣化經驗但增加記憶體用量，減少可能導致過度擬合近期經驗
 TARGET_UPDATE_FREQUENCY = 8000  # Steps between target network updates (目標網絡更新間隔步數) - 增加提高訓練穩定性但降低學習速度，減少提高學習速度但可能導致不穩定振盪
-TRAINING_EPISODES = 10000  # Total training episodes (總訓練回合數) - 增加可提高最終性能但延長訓練時間，減少可加快實驗但可能無法充分學習
+TRAINING_EPISODES = 5000  # Total training episodes (總訓練回合數) - 增加可提高最終性能但延長訓練時間，減少可加快實驗但可能無法充分學習
 
 # Exploration parameters
 # 探索參數
 EPSILON_START = 1.0  # Initial exploration rate (初始探索率) - 保持較高可確保初期充分探索環境，降低則更早利用已知策略
 EPSILON_END = 0.1  # Final exploration rate (最終探索率) - 增加可確保持續探索新策略，減少則更專注於利用學到的策略
-EPSILON_DECAY = 1000000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
+EPSILON_DECAY = 4000000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
 DEFAULT_EVALUATE_MODE = False  # Default evaluation mode (默認評估模式) - 設為True時禁用探索，僅用於評估不影響訓練
 
 # Training control parameters
 # 訓練控制參數
-LEARNING_STARTS = 10000  # Steps before starting learning (開始學習前的步數) - 增加可收集更多隨機經驗確保多樣性，減少可加速開始學習
+LEARNING_STARTS = 20000  # Steps before starting learning (開始學習前的步數) - 增加可收集更多隨機經驗確保多樣性，減少可加速開始學習
 UPDATE_FREQUENCY = 4  # Steps between network updates (網絡更新間隔步數) - 減少可更頻繁更新網絡加速學習，增加可減少計算負擔但可能減慢學習
 
 ###############################
@@ -73,8 +73,8 @@ USE_PER = True  # Enable Prioritized Experience Replay (啟用優先經驗回放
 # PER超參數
 ALPHA = 0.6  # Priority exponent for sampling probability (優先級指數，用於採樣概率) - 增加強化高誤差樣本採樣頻率，減少使採樣更接近均勻
 BETA_START = 0.4  # Initial importance sampling weight value (初始重要性採樣權重值) - 增加可減少初期偏差但可能減慢收斂，保持低值使初期學習更聚焦於高誤差樣本
-BETA_FRAMES = 3600000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
-BETA_EXPONENT = 1.5  # Exponent for beta increase (beta增加的指數) - 增加可使beta增長更快，減少則增長更平緩
+BETA_FRAMES = 15000000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
+BETA_EXPONENT = 1.35  # Exponent for beta increase (beta增加的指數) - 增加可使beta增長更快，減少則增長更平緩
 EPSILON_PER = 1e-6  # Small constant for priority calculation (優先級計算的小常數) - 確保所有經驗都有非零優先級，防止某些經驗永不被採樣
 
 # SumTree settings

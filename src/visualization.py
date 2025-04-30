@@ -697,29 +697,63 @@ class Visualizer:
                 metrics_plotted += 1
                 
             elif metric_name == "beta" and self.beta_values:
-                # Plot beta - FIX: Unpack tuple values properly
+                # Plot beta values with episodes on x-axis instead of steps
                 steps, beta_values = zip(*self.beta_values)
-                axs[metrics_plotted].plot(steps, beta_values, color=self.colors['beta'], linewidth=2, label='Beta')
                 
-                self.configure_axis(axs[metrics_plotted], 'Importance Sampling Weight (Beta)', 'Training Steps', 'Beta Value')
-                
-                # Format x-axis to show steps in thousands
-                axs[metrics_plotted].xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f'{x/1000:.0f}k'))
-                
-                # Add some statistics
-                if self.beta_values:
-                    initial_beta = beta_values[0] if beta_values else 0
-                    current_beta = beta_values[-1] if beta_values else 0
-                    stats_text = f"Initial: {initial_beta:.4f}, Current: {current_beta:.4f}"
-                    axs[metrics_plotted].text(0.02, 0.95, stats_text, transform=axs[metrics_plotted].transAxes, 
-                              verticalalignment='top', fontsize=self.font_sizes['stats'],
-                              bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, pad=0.4, edgecolor='#dddddd'))
-                
-                # Add legend
-                handles, labels = axs[metrics_plotted].get_legend_handles_labels()
-                if handles and labels:
-                    axs[metrics_plotted].legend(fontsize=self.font_sizes['legend'], framealpha=0.9, loc='best')
+                # Convert steps to approximate episode numbers for consistent x-axis
+                # Assuming average episode length or using step-to-episode mapping
+                if self.episode_lengths:
+                    # Calculate cumulative sum of episode lengths to map steps to episodes
+                    cumulative_steps = np.cumsum(self.episode_lengths)
+                    episode_numbers = []
                     
+                    for step in steps:
+                        # Find the episode this step belongs to
+                        episode_idx = np.searchsorted(cumulative_steps, step)
+                        episode_numbers.append(episode_idx + 1)  # +1 because episodes are 1-indexed
+                else:
+                    # Fallback if episode lengths not available: estimate based on total steps and episodes
+                    if self.episode_rewards:
+                        total_episodes = len(self.episode_rewards)
+                        max_step = max(steps) if steps else 0
+                        episode_numbers = [int((step / max_step) * total_episodes) + 1 for step in steps]
+                    else:
+                        # If we have neither episode rewards nor lengths, just use step numbers
+                        episode_numbers = steps
+                
+                # Only plot points where we have episodes calculated
+                valid_indices = [i for i, ep in enumerate(episode_numbers) if ep <= len(self.episode_rewards)]
+                
+                if valid_indices:
+                    valid_episodes = [episode_numbers[i] for i in valid_indices]
+                    valid_betas = [beta_values[i] for i in valid_indices]
+                    
+                    axs[metrics_plotted].plot(valid_episodes, valid_betas, 
+                                              color=self.colors['beta'], linewidth=2, label='Beta')
+                    
+                    self.configure_axis(axs[metrics_plotted], 'Importance Sampling Weight (Beta)', 
+                                        'Episode', 'Beta Value')
+                    
+                    # Add some statistics
+                    if beta_values:
+                        initial_beta = beta_values[0] if beta_values else 0
+                        current_beta = beta_values[-1] if beta_values else 0
+                        stats_text = f"Initial: {initial_beta:.4f}, Current: {current_beta:.4f}"
+                        axs[metrics_plotted].text(0.02, 0.95, stats_text, transform=axs[metrics_plotted].transAxes, 
+                                  verticalalignment='top', fontsize=self.font_sizes['stats'],
+                                  bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, pad=0.4, edgecolor='#dddddd'))
+                    
+                    # Add legend
+                    handles, labels = axs[metrics_plotted].get_legend_handles_labels()
+                    if handles and labels:
+                        axs[metrics_plotted].legend(fontsize=self.font_sizes['legend'], framealpha=0.9, loc='best')
+                else:
+                    self.configure_axis(axs[metrics_plotted], 'Importance Sampling Weight (Beta)', 
+                                        'Episode', 'Beta Value')
+                    axs[metrics_plotted].text(0.5, 0.5, "Cannot map steps to episodes", 
+                                            horizontalalignment='center', verticalalignment='center',
+                                            transform=axs[metrics_plotted].transAxes, fontsize=12)
+                
                 metrics_plotted += 1
         
         # If we have remaining empty plots, fill them with placeholders

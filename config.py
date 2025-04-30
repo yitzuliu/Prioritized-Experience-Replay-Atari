@@ -43,21 +43,21 @@ TRAINING_MODE = True  # Training mode flag to disable rendering (訓練模式標
 # 核心DQN參數
 LEARNING_RATE = 0.0001  # Learning rate for Adam optimizer (Adam優化器的學習率) - 增加可加快學習但可能不穩定，減少可提高穩定性但學習較慢
 GAMMA = 0.99  # Discount factor for future rewards (未來獎勵的折扣因子) - 增加使智能體更重視長期獎勵，減少則更關注即時獎勵
-BATCH_SIZE = 128  # Batch size for training updates (訓練更新的批次大小) - 增加可提供更穩定的梯度估計但增加記憶體消耗，減少可能導致訓練不穩定
-MEMORY_CAPACITY = 100000  # Experience replay memory capacity (經驗回放記憶體容量) - 增加可儲存更多多樣化經驗但增加記憶體用量，減少可能導致過度擬合近期經驗
-TARGET_UPDATE_FREQUENCY = 3000  # Steps between target network updates (目標網絡更新間隔步數) - 增加提高訓練穩定性但降低學習速度，減少提高學習速度但可能導致不穩定振盪
+BATCH_SIZE = 32  # Batch size for training updates (訓練更新的批次大小) - 增加可提供更穩定的梯度估計但增加記憶體消耗，減少可能導致訓練不穩定
+MEMORY_CAPACITY = 500000  # Experience replay memory capacity (經驗回放記憶體容量) - 增加可儲存更多多樣化經驗但增加記憶體用量，減少可能導致過度擬合近期經驗
+TARGET_UPDATE_FREQUENCY = 10000  # Steps between target network updates (目標網絡更新間隔步數) - 增加提高訓練穩定性但降低學習速度，減少提高學習速度但可能導致不穩定振盪
 TRAINING_EPISODES = 100000  # Total training episodes (總訓練回合數) - 增加可提高最終性能但延長訓練時間，減少可加快實驗但可能無法充分學習
 
 # Exploration parameters
 # 探索參數
 EPSILON_START = 1.0  # Initial exploration rate (初始探索率) - 保持較高可確保初期充分探索環境，降低則更早利用已知策略
 EPSILON_END = 0.05  # Final exploration rate (最終探索率) - 增加可確保持續探索新策略，減少則更專注於利用學到的策略
-EPSILON_DECAY = 200000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
+EPSILON_DECAY = 3000000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
 DEFAULT_EVALUATE_MODE = False  # Default evaluation mode (默認評估模式) - 設為True時禁用探索，僅用於評估不影響訓練
 
 # Training control parameters
 # 訓練控制參數
-LEARNING_STARTS = 5000  # Steps before starting learning (開始學習前的步數) - 增加可收集更多隨機經驗確保多樣性，減少可加速開始學習
+LEARNING_STARTS = 20000  # Steps before starting learning (開始學習前的步數) - 增加可收集更多隨機經驗確保多樣性，減少可加速開始學習
 UPDATE_FREQUENCY = 2  # Steps between network updates (網絡更新間隔步數) - 減少可更頻繁更新網絡加速學習，增加可減少計算負擔但可能減慢學習
 
 ###############################
@@ -73,8 +73,8 @@ USE_PER = True  # Enable Prioritized Experience Replay (啟用優先經驗回放
 # PER超參數
 ALPHA = 0.6  # Priority exponent for sampling probability (優先級指數，用於採樣概率) - 增加強化高誤差樣本採樣頻率，減少使採樣更接近均勻
 BETA_START = 0.4  # Initial importance sampling weight value (初始重要性採樣權重值) - 增加可減少初期偏差但可能減慢收斂，保持低值使初期學習更聚焦於高誤差樣本
-BETA_FRAMES = 400000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
-BETA_EXPONENT = 1.1  # Exponent for beta increase (beta增加的指數) - 增加可使beta增長更快，減少則增長更平緩
+BETA_FRAMES = 4000000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
+BETA_EXPONENT = 1.02  # Exponent for beta increase (beta增加的指數) - 增加可使beta增長更快，減少則增長更平緩
 EPSILON_PER = 1e-6  # Small constant for priority calculation (優先級計算的小常數) - 確保所有經驗都有非零優先級，防止某些經驗永不被採樣
 
 # SumTree settings
@@ -92,8 +92,8 @@ PER_BATCH_SIZE = 50  # Batch size for PER data writes (PER數據寫入的批次�
 ###############################
 
 USE_ONE_CONV_LAYER = False  # Whether to use a single convolutional layer (是否使用單個卷積層) - 簡化模型結構，降低計算需求但可能減弱特徵提取能力
-USE_TWO_CONV_LAYERS = False  # Whether to use two convolutional layers (是否使用兩個卷積層) - 中等複雜度，平衡計算效率和特徵提取能力
-USE_THREE_CONV_LAYERS = True  # Whether to use three convolutional layers (是否使用三個卷積層) - 增加模型複雜度和表達能力，提高特徵提取但增加計算需求
+USE_TWO_CONV_LAYERS = True  # Whether to use two convolutional layers (是否使用兩個卷積層) - 中等複雜度，平衡計算效率和特徵提取能力
+USE_THREE_CONV_LAYERS = False  # Whether to use three convolutional layers (是否使用三個卷積層) - 增加模型複雜度和表達能力，提高特徵提取但增加計算需求
 
 # First convolutional layer parameters
 # 第一卷積層參數
@@ -120,7 +120,7 @@ GRAD_CLIP_NORM = 5.0  # Gradient clipping norm (梯度裁剪范數) - 防止梯�
 
 # Evaluation settings
 # 評估設置
-EVAL_EPISODES = 20  # Number of episodes for each evaluation (每次評估的回合數) - 增加可提供更可靠的評估結果但延長評估時間
+EVAL_EPISODES = 100  # Number of episodes for each evaluation (每次評估的回合數) - 增加可提供更可靠的評估結果但延長評估時間
 EVAL_FREQUENCY = 100  # Episodes between evaluations (評估間隔的回合數) - 減少可更頻繁評估訓練進度但延長總訓練時間，增加可加速訓練但降低進度監控頻率
 
 ###############################
@@ -143,9 +143,9 @@ DATA_DIR = os.path.join(RESULTS_DIR, "data")  # Directory for data storage (數�
 # Logger settings
 # 日誌記錄器設置
 ENABLE_FILE_LOGGING = False  # Whether to write logs to files (是否將日誌寫入文件) - 啟用可保存完整訓練記錄但增加I/O操作，禁用可減輕系統負擔但丟失歷史記錄
-LOGGER_SAVE_INTERVAL = 50  # Episodes between logger saves (日誌保存間隔的回合數) - 減少可更頻繁保存進度但增加I/O操作，增加可減輕I/O負擔但風險更高
+LOGGER_SAVE_INTERVAL = 100  # Episodes between logger saves (日誌保存間隔的回合數) - 減少可更頻繁保存進度但增加I/O操作，增加可減輕I/O負擔但風險更高
 LOGGER_MEMORY_WINDOW = 1000  # Maximum records kept in memory (内存中保留的最大記錄數) - 增加可存儲更長的歷史記錄但增加記憶體使用，減少可節省記憶體但限制可存取的歷史數據
-LOGGER_BATCH_SIZE = 30  # Records to accumulate before writing (累積多少記錄後寫入磁盤) - 增加可減少I/O頻率但延遲數據持久化，減少可更快保存記錄但增加I/O頻率
-LOGGER_DETAILED_INTERVAL = 10  # Episodes between detailed reports (詳細報告間隔的回合數) - 減少提供更頻繁的詳細進度報告但增加輸出量，增加可減少輸出量但降低監控粒度
+LOGGER_BATCH_SIZE = 50  # Records to accumulate before writing (累積多少記錄後寫入磁盤) - 增加可減少I/O頻率但延遲數據持久化，減少可更快保存記錄但增加I/O頻率
+LOGGER_DETAILED_INTERVAL = 50  # Episodes between detailed reports (詳細報告間隔的回合數) - 減少提供更頻繁的詳細進度報告但增加輸出量，增加可減少輸出量但降低監控粒度
 LOGGER_MAJOR_METRICS = ["reward", "loss", "epsilon", "beta"]  # Main metrics to plot (主要繪圖指標) - 自定義要在概覽圖中顯示的主要指標
-VISUALIZATION_SAVE_INTERVAL = 100  # Episodes between visualization saves (可視化保存間隔的回合數) - 減少可更頻繁生成可視化但增加I/O和計算負擔，增加可減輕負擔但減少視覺反饋
+VISUALIZATION_SAVE_INTERVAL = 1000  # Episodes between visualization saves (可視化保存間隔的回合數) - 減少可更頻繁生成可視化但增加I/O和計算負擔，增加可減輕負擔但減少視覺反饋

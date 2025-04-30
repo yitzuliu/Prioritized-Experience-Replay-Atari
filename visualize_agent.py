@@ -1,14 +1,17 @@
 """
-遊戲畫面重現腳本 (Game Screen Reproduction Script)
+Game Screen Reproduction Script (遊戲畫面重現腳本)
 
-此腳本載入預先訓練好的DQN模型，並在視覺化模式下運行冰球遊戲環境，
-以便觀察智能體在不同實驗中的表現。本次實際使用的是 "exp_20250430_014335" 實驗
-中的訓練結果，使用了 checkpoint_6500.pt 模型檔案（或最新可用的checkpoint）。
+This script loads a pre-trained DQN model and runs the Atari game environment
+in visualization mode to observe agent performance across different experiments.
+Specifically used to visualize the checkpoint_6500.pt model file from the
+exp_20250430_014335 experiment.
 
-使用方法:
-    python visualize_agent.py                  # 使用最新的checkpoint
-    python visualize_agent.py --checkpoint checkpoint_1000.pt  # 指定checkpoint
-    python visualize_agent.py --speed 0.5      # 慢動作觀看
+Usage:
+    python visualize_agent.py                     # Use the latest checkpoint
+    python visualize_agent.py --checkpoint checkpoint_1000.pt  # Specify checkpoint
+    python visualize_agent.py --speed 0.5         # Slow motion viewing
+    python visualize_agent.py --episodes 5        # Multi-episode observation
+    python visualize_agent.py --difficulty 2      # Adjust game difficulty
 """
 
 import os
@@ -18,7 +21,7 @@ import argparse
 import torch
 import numpy as np
 
-# 添加父目錄到路徑以導入config.py
+# Add parent directory to path to import config.py
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import config
 
@@ -27,135 +30,147 @@ from src.dqn_agent import DQNAgent
 from src.device_utils import get_device
 
 def parse_arguments():
-    """解析命令行參數"""
-    parser = argparse.ArgumentParser(description="Visualize trained agent playing Ice Hockey")
+    """
+    Parse command line arguments for game reproduction configuration.
     
-    # 實驗ID和模型參數
-    parser.add_argument('--exp_id', type=str, default='20250430_014335',
-                        help='實驗ID (results/models/中的資料夾名稱，默認為20250430_014335)')
+    Returns:
+        argparse.Namespace: Parsed arguments (解析後的參數)
+    """
+    parser = argparse.ArgumentParser(description="Visualize trained agent playing Atari games")
+    
+    parser.add_argument('--exp_id', type=str, default= config.VISUALIZATION_SPECIFIC_EXPERIMENT,
+                        help='Experiment ID (results/models/exp_XXXXXX)')
     parser.add_argument('--checkpoint', type=str, default=None,
-                        help='要載入的特定checkpoint檔案 (例如: checkpoint_1000.pt)')
+                        help='Checkpoint filename to load (e.g., checkpoint_1000.pt)')
     parser.add_argument('--latest', action='store_true', default=True,
-                        help='若設定，則使用最新的checkpoint檔案 (默認為True)')
+                        help='Use the latest checkpoint in the experiment directory')
     
-    # 環境參數
-    parser.add_argument('--difficulty', type=int, default=0,
-                        help='遊戲難度 (0-4，其中0最簡單)')
+    #
+    parser.add_argument('--difficulty', type=int, default=config.DIFFICULTY,
+                        help=f'Game difficulty level (0-4) (default: {config.DIFFICULTY})')
     parser.add_argument('--speed', type=float, default=1.0,
-                        help='遊戲速度倍數 (值小於1.0時會放慢遊戲)')
+                        help='Game speed multiplier (less than 1.0 to slow down)')
     parser.add_argument('--episodes', type=int, default=3,
-                        help='要運行的遊戲回合數')
+                        help='Number of game episodes to run (default: 3)')
     
     return parser.parse_args()
 
 def get_latest_checkpoint(exp_path):
-    """尋找實驗目錄中最新的checkpoint檔案"""
+    """
+    Find the latest checkpoint file in the experiment directory.
+    
+    Args:
+        exp_path: Experiment directory path (實驗目錄路徑)
+        
+    Returns:
+        str: Latest checkpoint filename (最新checkpoint檔案名稱)
+    """
     checkpoints = [f for f in os.listdir(exp_path) if f.startswith('checkpoint_') and f.endswith('.pt')]
     
     if not checkpoints:
         return None
     
-    # 按照數字排序checkpoint檔案
     checkpoints.sort(key=lambda x: int(x.split('_')[1].split('.')[0]))
     latest = checkpoints[-1]
-    print(f"發現{len(checkpoints)}個checkpoint檔案，最新的是: {latest}")
-    return latest  # 返回最新的
+    print(f"Found {len(checkpoints)} checkpoint files, latest is: {latest}")
+    return latest
 
 def preprocess_observation(observation):
-    """預處理觀察數據以符合PyTorch卷積層的輸入要求
-    
-    遊戲環境返回形狀為(4,84,84,1)的觀察數據，但PyTorch卷積層需要(batch,channel,height,width)格式
     """
-    # 如果觀察是形狀為 (4, 84, 84, 1) 的NumPy陣列
+    Preprocess observation data to meet the input requirements of PyTorch convolutional layers.
+    
+    This function converts observation data from shape (4,84,84,1) to a format suitable for 
+    the DQN network by removing the trailing dimension and converting to PyTorch tensor.
+    
+    Args:
+        observation: Raw observation from environment (環境返回的原始觀察)
+        
+    Returns:
+        torch.Tensor: Processed observation data ready for network input
+    """
     if isinstance(observation, np.ndarray) and observation.shape == (4, 84, 84, 1):
-        # 移除最後一個維度並轉置為 (4, 84, 84)
         observation = observation.squeeze(-1)
         
-    # 確保是PyTorch張量
     if not isinstance(observation, torch.Tensor):
         observation = torch.FloatTensor(observation)
         
     return observation
 
 def load_agent(exp_id, checkpoint_file=None, use_latest=True):
-    """載入預先訓練好的智能體
-    
-    參數:
-        exp_id: 實驗ID，對應results/models/中的資料夾名
-        checkpoint_file: 指定要載入的checkpoint檔案名
-        use_latest: 是否使用最新的checkpoint檔案
-        
-    返回:
-        agent: 已載入模型的DQN智能體
     """
-    # 確定模型目錄
-    model_dir = os.path.join('results', 'models', f'exp_{exp_id}')
+    Load a pre-trained agent from saved model checkpoint.
+    
+    This function loads a DQN agent with the specified experiment ID and checkpoint file,
+    or automatically uses the latest available checkpoint if not specified.
+    
+    Args:
+        exp_id: Experiment ID (實驗ID)
+        checkpoint_file: Specific checkpoint filename to load
+        use_latest: Whether to use the latest checkpoint file (是否使用最新的checkpoint檔案)
+        
+    Returns:
+        DQNAgent: Agent with loaded model ready for visualization
+    """
+    model_dir = os.path.join(config.MODEL_DIR, f'exp_{exp_id}')
     
     if not os.path.exists(model_dir):
-        print(f"錯誤: 實驗目錄 {model_dir} 不存在!")
+        print(f"Error: Experiment directory {model_dir} does not exist!")
         sys.exit(1)
     
-    # 確定要載入的checkpoint檔案
     if checkpoint_file is None and use_latest:
         checkpoint_file = get_latest_checkpoint(model_dir)
-        print(f"使用最新的checkpoint: {checkpoint_file}")
+        print(f"Using latest checkpoint: {checkpoint_file}")
     
     if checkpoint_file is None:
-        print("錯誤: 未指定checkpoint檔案且未設置--latest!")
+        print("Error: No checkpoint file specified and --latest not set!")
         sys.exit(1)
     
     checkpoint_path = os.path.join(model_dir, checkpoint_file)
     
     if not os.path.exists(checkpoint_path):
-        print(f"錯誤: Checkpoint檔案 {checkpoint_path} 不存在!")
+        print(f"Error: Checkpoint file {checkpoint_path} does not exist!")
         sys.exit(1)
     
-    # 創建環境以獲取state_shape和action_space_size
     env = make_atari_env(render_mode=None, training=False)
     
-    # 檢查觀察空間的形狀
     state_shape = env.observation_space.shape
-    print(f"觀察空間形狀: {state_shape}")
+    print(f"Observation space shape: {state_shape}")
     
-    # 對於 (4, 84, 84, 1) 的狀態，將其調整為 (4, 84, 84)
     if len(state_shape) == 4 and state_shape[-1] == 1:
         state_shape = state_shape[:-1]
     
     action_space_size = env.action_space.n
-    print(f"動作空間: {env.action_space}")
+    print(f"Action space: {env.action_space}")
     env.close()
     
-    # 創建智能體
-    print(f"創建DQN智能體，狀態形狀={state_shape}，動作空間大小={action_space_size}")
-    agent = DQNAgent(state_shape, action_space_size, use_per=True)
+    print(f"Creating DQN agent with state shape={state_shape}, action space size={action_space_size}")
+    agent = DQNAgent(state_shape, action_space_size, use_per=config.USE_PER)
     
-    # 載入模型
-    print(f"正在從{checkpoint_path}載入模型...")
+    print(f"Loading model from {checkpoint_path}...")
     if not agent.load_model(checkpoint_path):
-        print("錯誤: 模型載入失敗!")
+        print("Error: Model loading failed!")
         sys.exit(1)
     
-    print(f"成功載入'{exp_id}'實驗的'{checkpoint_file}'模型檔案")
+    print(f"Successfully loaded '{checkpoint_file}' model file from experiment '{exp_id}'")
     
-    # 設置為評估模式（禁用探索）
     agent.set_evaluation_mode(True)
     
     return agent
 
-def visualize_gameplay(agent, difficulty=0, speed=1.0, num_episodes=3):
-    """在視覺化模式下運行智能體
-    
-    參數:
-        agent: 已訓練的DQN智能體
-        difficulty: 遊戲難度級別(0-4)
-        speed: 遊戲速度倍數，小於1.0時放慢
-        num_episodes: 要運行的遊戲回合數
+def visualize_gameplay(agent, difficulty=config.DIFFICULTY, speed=1.0, num_episodes=3):
     """
-    # 創建環境
+    Run the agent in visualization mode to display gameplay.
+    
+    Args:
+        agent: Trained DQN agent (已訓練的DQN智能體)
+        difficulty: Game difficulty level (0-4) (遊戲難度級別)
+        speed: Game speed multiplier, slower when less than 1.0
+        num_episodes: Number of game episodes to run
+    """
     env = make_atari_env(render_mode="human", training=False, difficulty=difficulty)
     total_rewards = []
     
-    print(f"\n開始視覺化遊戲畫面，難度={difficulty}，速度={speed}倍，回合數={num_episodes}")
+    print(f"\nStarting gameplay visualization, difficulty={difficulty}, speed={speed}x, episodes={num_episodes}")
     
     for episode in range(num_episodes):
         observation, info = env.reset()
@@ -164,51 +179,51 @@ def visualize_gameplay(agent, difficulty=0, speed=1.0, num_episodes=3):
         total_reward = 0
         steps = 0
         
-        print(f"\n開始第{episode+1}/{num_episodes}回合")
+        print(f"\nStarting episode {episode+1}/{num_episodes}")
         
         while not (done or truncated):
-            # 預處理觀察數據
             processed_observation = preprocess_observation(observation)
             
-            # 選擇動作
             action = agent.select_action(processed_observation, evaluate=True)
             
-            # 執行動作
+            # Execute action
             observation, reward, done, truncated, info = env.step(action)
             
             total_reward += reward
             steps += 1
             
-            # 顯示進度
+            # Display progress
             if steps % 10 == 0:
-                print(f"步數: {steps}, 當前獎勵: {total_reward}", end="\r")
+                print(f"Steps: {steps}, Current reward: {total_reward}", end="\r")
             
-            # 控制遊戲速度
+            # Control game speed
             if speed < 1.0:
-                time.sleep((1.0 - speed) * 0.1)  # 降低速度的延遲
+                time.sleep((1.0 - speed) * 0.1)  # Delay to slow down speed
         
         total_rewards.append(total_reward)
-        print(f"\n第{episode+1}回合在{steps}步後結束，總獎勵: {total_reward}")
+        print(f"\nEpisode {episode+1} ended after {steps} steps, total reward: {total_reward}")
     
     env.close()
     
-    # 顯示總結
+    # Display summary statistics
     avg_reward = sum(total_rewards) / len(total_rewards)
-    print(f"\n{num_episodes}回合的結果總結:")
-    print(f"平均獎勵: {avg_reward:.2f}")
-    print(f"最低獎勵: {min(total_rewards)}")
-    print(f"最高獎勵: {max(total_rewards)}")
+    print(f"\nSummary of {num_episodes} episodes:")
+    print(f"Average reward: {avg_reward:.2f}")
+    print(f"Minimum reward: {min(total_rewards)}")
+    print(f"Maximum reward: {max(total_rewards)}")
+    print(f"Standard deviation: {np.std(total_rewards):.2f}")
 
 def main():
-    # 解析命令行參數
+    """
+    Main function that coordinates the entire visualization process.
+    (主函數，協調整個可視化過程)
+    """
     args = parse_arguments()
     
-    print(f"準備重現實驗'{args.exp_id}'的遊戲畫面")
+    print(f"Experiment ID: '{args.exp_id}'")
     
-    # 載入智能體
     agent = load_agent(args.exp_id, args.checkpoint, args.latest)
     
-    # 視覺化遊戲畫面
     visualize_gameplay(agent, args.difficulty, args.speed, args.episodes)
 
 if __name__ == "__main__":

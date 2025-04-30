@@ -1050,6 +1050,85 @@ class Visualizer:
             
         return plot_files
 
+    def avg_reward(self, window_size: int = 100, save: bool = True, show: bool = True) -> float:
+        """
+        Calculate and plot average rewards per window_size episodes.
+        
+        Args:
+            window_size: Number of episodes to average over
+            save: Whether to save the plot to a file
+            show: Whether to display the plot
+            
+        Returns:
+            str: Path to the saved plot file, or empty string if not saved
+        """
+        # Update data before plotting
+        self._get_data()
+        
+        if not self.episode_rewards:
+            print("No reward data available for plotting.")
+            return ""
+        
+        # Set up plot style
+        self.setup_plot_style()
+        
+        # Create figure
+        fig, ax = plt.subplots(figsize=self.fig_sizes['single'])
+        
+        # Calculate average rewards for every window_size episodes
+        total_episodes = len(self.episode_rewards)
+        num_windows = total_episodes // window_size
+        
+        # Make sure we have complete windows only
+        avg_rewards = []
+        x_values = []
+        
+        for i in range(num_windows):
+            start_idx = i * window_size
+            end_idx = start_idx + window_size
+            if end_idx <= total_episodes:
+                avg_rewards.append(np.mean(self.episode_rewards[start_idx:end_idx]))
+                x_values.append(end_idx)  # Mark the window by its end episode
+        
+        # Plot average rewards
+        ax.plot(x_values, avg_rewards, color=self.colors['reward_avg'], 
+            linewidth=2.5, label=f'Average Reward (per {window_size} episodes)')
+        
+        # Configure axis styling
+        self.configure_axis(ax, 'Training Rewards (Averaged)', 'Episode', 'Average Reward')
+        
+        # Add some statistics as text with improved styling
+        if avg_rewards:
+            max_avg_reward = max(avg_rewards)
+            recent_avg = avg_rewards[-1]
+            stats_text = f"Max Avg: {max_avg_reward:.2f}, Recent Avg: {recent_avg:.2f}"
+            ax.text(0.02, 0.95, stats_text, transform=ax.transAxes, 
+               verticalalignment='top', fontsize=self.font_sizes['stats'],
+               bbox=dict(boxstyle='round', facecolor='white', alpha=0.9, pad=0.4, edgecolor='#dddddd'))
+        
+        # Add legend with improved styling
+        ax.legend(fontsize=self.font_sizes['legend'], framealpha=0.9, loc='lower right')
+        
+        # Set overall title
+        fig.suptitle(f'Training Rewards (Averaged) - {self.experiment_name}', 
+                fontsize=self.font_sizes['title'], fontweight='bold')
+        
+        # Save plot with improved styling
+        if save:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"rewards_avg_{timestamp}.png"
+            filepath = os.path.join(self.plots_dir, filename)
+            plt.tight_layout(rect=[0, 0, 1, 0.95])  # Make room for the title
+            plt.savefig(filepath, dpi=300, bbox_inches='tight')
+            
+        # Show plot
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+            
+        return filepath if save else ""
+
 # For testing purposes
 if __name__ == "__main__":
     # Try to load an experiment if one exists
@@ -1080,6 +1159,7 @@ if __name__ == "__main__":
             
             # Create visualizer
             vis = Visualizer(experiment_name=latest_experiment)
+            vis.avg_reward()
             
             # Generate all plots
             print(f"Generating plots from experiment: {latest_experiment}")

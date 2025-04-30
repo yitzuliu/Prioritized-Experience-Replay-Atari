@@ -52,7 +52,7 @@ TRAINING_EPISODES = 100000  # Total training episodes (總訓練回合數) - 增
 # 探索參數
 EPSILON_START = 1.0  # Initial exploration rate (初始探索率) - 保持較高可確保初期充分探索環境，降低則更早利用已知策略
 EPSILON_END = 0.05  # Final exploration rate (最終探索率) - 增加可確保持續探索新策略，減少則更專注於利用學到的策略
-EPSILON_DECAY = 3000000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
+EPSILON_DECAY = 2500000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
 DEFAULT_EVALUATE_MODE = False  # Default evaluation mode (默認評估模式) - 設為True時禁用探索，僅用於評估不影響訓練
 
 # Training control parameters
@@ -73,7 +73,7 @@ USE_PER = True  # Enable Prioritized Experience Replay (啟用優先經驗回放
 # PER超參數
 ALPHA = 0.6  # Priority exponent for sampling probability (優先級指數，用於採樣概率) - 增加強化高誤差樣本採樣頻率，減少使採樣更接近均勻
 BETA_START = 0.4  # Initial importance sampling weight value (初始重要性採樣權重值) - 增加可減少初期偏差但可能減慢收斂，保持低值使初期學習更聚焦於高誤差樣本
-BETA_FRAMES = 4000000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
+BETA_FRAMES = 3500000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
 BETA_EXPONENT = 1.02  # Exponent for beta increase (beta增加的指數) - 增加可使beta增長更快，減少則增長更平緩
 EPSILON_PER = 1e-6  # Small constant for priority calculation (優先級計算的小常數) - 確保所有經驗都有非零優先級，防止某些經驗永不被採樣
 
@@ -149,3 +149,5 @@ LOGGER_BATCH_SIZE = 50  # Records to accumulate before writing (累積多少記�
 LOGGER_DETAILED_INTERVAL = 50  # Episodes between detailed reports (詳細報告間隔的回合數) - 減少提供更頻繁的詳細進度報告但增加輸出量，增加可減少輸出量但降低監控粒度
 LOGGER_MAJOR_METRICS = ["reward", "loss", "epsilon", "beta"]  # Main metrics to plot (主要繪圖指標) - 自定義要在概覽圖中顯示的主要指標
 VISUALIZATION_SAVE_INTERVAL = 1000  # Episodes between visualization saves (可視化保存間隔的回合數) - 減少可更頻繁生成可視化但增加I/O和計算負擔，增加可減輕負擔但減少視覺反饋
+
+VISUALIZATION_SPECIFIC_EXPERIMENT = 'exp_20250430_014335' # Specific training run for visualization (可視化的特定訓練運行) - 用於指定要可視化的特定訓練運行，通常用於比較不同運行的結果

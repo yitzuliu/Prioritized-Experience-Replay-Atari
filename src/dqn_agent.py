@@ -172,15 +172,16 @@ class DQNAgent:
                 # Smoother polynomial decay formula
                 # The power parameter (0.5) makes the curve more gradual than exponential decay
                 progress = min(1.0, (self.steps_done - self.learning_starts) / self.epsilon_decay)
-            if progress < 0.3:
-                # 
-                epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * (1 - progress) ** 2
-            elif progress < 0.65:
-                # 
-                epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) ** 1
-            else:
-                # 
-                epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) ** 0.5
+                
+                if progress < 0.35:
+                    # Early phase - slow decay, maintain high exploration
+                    epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * (1 - progress) ** 2
+                elif progress < 0.65:
+                    # Middle phase - steadier decay
+                    epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * (1 - progress)
+                else:
+                    # Final phase - accelerated decay to minimum
+                    epsilon = self.epsilon_end + (self.epsilon_start - self.epsilon_end) * (1 - progress) ** 0.5
             
             # Increment step counter
             self.steps_done += 1

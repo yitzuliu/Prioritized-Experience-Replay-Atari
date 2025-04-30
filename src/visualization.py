@@ -1055,6 +1055,7 @@ if __name__ == "__main__":
     # Try to load an experiment if one exists
     results_dir = config.RESULTS_DIR
     data_dir = config.DATA_DIR
+    specific_experiment = config.VISUALIZATION_SPECIFIC_EXPERIMENT
     
     print(f"Looking for experiments in {data_dir}")
     
@@ -1064,10 +1065,18 @@ if __name__ == "__main__":
                       if os.path.isdir(os.path.join(data_dir, d))]
         
         if experiments:
-            # Use the most recent experiment
-            experiments.sort()
-            latest_experiment = experiments[-1]
-            print(f"Found {len(experiments)} experiments. Using the most recent: {latest_experiment}")
+
+            if specific_experiment:
+
+                # specify the path to the latest experiment
+                latest_experiment = specific_experiment
+                print(f"Found {len(experiments)} experiments. Using the most recent: {latest_experiment}")
+
+            else:
+                # Use the most recent experiment
+                experiments.sort()
+                latest_experiment = experiments[-1]
+                print(f"Found {len(experiments)} experiments. Using the most recent: {latest_experiment}")
             
             # Create visualizer
             vis = Visualizer(experiment_name=latest_experiment)
@@ -1076,7 +1085,9 @@ if __name__ == "__main__":
             print(f"Generating plots from experiment: {latest_experiment}")
             plot_files = vis.generate_all_plots(show=True)
             print(f"Generated {len(plot_files)} plots: {plot_files}")
+        
         else:
             print("No experiments found. Run training first to generate data.")
+    
     else:
         print(f"Data directory {data_dir} not found. Please run training first to generate data.")

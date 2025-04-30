@@ -25,7 +25,12 @@ This document outlines the detailed plan for implementing a DQN with Prioritized
    - Complete documentation and examples
    - Well-organized code structure
 
-*實作目標：初學者友好的演算法實現、資料可視化、多平台兼容性、GitHub準備*
+5. **Agent Visualization**
+   - Implement a script (`visualize_agent.py`) to load trained models and visualize agent performance in the Atari environment
+   - Support customizable parameters such as experiment ID, checkpoint selection, game speed, difficulty level, and number of episodes
+   - Provide real-time gameplay visualization for debugging and performance analysis
+
+*實作目標：初學者友好的演算法實現、資料可視化、多平台兼容性、GitHub準備、代理可視化*
 
 ## Implementation Status
 

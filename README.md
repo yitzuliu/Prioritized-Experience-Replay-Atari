@@ -79,6 +79,22 @@ To train a new model from scratch:
 python train.py
 ```
 
+### Visualizing Agent Performance (可視化智能體表現)
+
+To observe the performance of a trained agent, use the `visualize_agent.py` script. This script allows you to load a specific experiment and checkpoint to visualize gameplay.
+
+#### Example
+```bash
+python visualize_agent.py --exp_id exp_20250430_014335 --checkpoint checkpoint_1000.pt --speed 0.5 --episodes 5 --difficulty 2
+```
+
+- `--exp_id`: Specify the experiment ID (e.g., `exp_20250430_014335`).
+- `--checkpoint`: Specify the checkpoint file to load (e.g., `checkpoint_1000.pt`).
+- `--speed`: Adjust the game speed (e.g., `0.5` for slow motion).
+- `--episodes`: Number of episodes to visualize (default: 3).
+- `--difficulty`: Set the game difficulty level (0-4).
+
+This script is useful for debugging and analyzing the agent's behavior in the environment.
 
 ### Algorithm Description (演算法說明)
 

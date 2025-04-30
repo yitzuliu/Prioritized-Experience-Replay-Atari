@@ -196,9 +196,14 @@ def visualize_gameplay(agent, difficulty=config.DIFFICULTY, speed=1.0, num_episo
             if steps % 10 == 0:
                 print(f"Steps: {steps}, Current reward: {total_reward}", end="\r")
             
-            # Control game speed
+            # Control game speed - Improved implementation
             if speed < 1.0:
-                time.sleep((1.0 - speed) * 0.1)  # Delay to slow down speed
+                # Use a larger base delay for more noticeable effect
+                time.sleep((1.0 - speed) * 0.3)  # Increased from 0.1 to 0.3 for more noticeable effect
+            elif speed > 1.0:
+                # For faster speeds, we can't actually speed up the game, but we can skip frames
+                # In this case, we'll just make the delay minimal
+                pass  # No delay needed for faster speeds
         
         total_rewards.append(total_reward)
         print(f"\nEpisode {episode+1} ended after {steps} steps, total reward: {total_reward}")

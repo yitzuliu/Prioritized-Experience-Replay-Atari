@@ -1134,7 +1134,7 @@ if __name__ == "__main__":
     # Try to load an experiment if one exists
     results_dir = config.RESULTS_DIR
     data_dir = config.DATA_DIR
-    specific_experiment = config.VISUALIZATION_SPECIFIC_EXPERIMENT
+    specific_experiment = f'exp_{config.VISUALIZATION_SPECIFIC_EXPERIMENT}'
     
     print(f"Looking for experiments in {data_dir}")
     

@@ -54,15 +54,32 @@ All planned components are now fully implemented and operational. The implementa
   - **Memory Management**: Intelligently limits memory usage for extended training
   - **Batch Writing**: Optimizes I/O performance with batched data persistence
 
-### Visualization Tools (`src/visualization.py`)
-- **Functionality**: Generates detailed visualizations of training metrics
-- **Key Visualizations**:
-  - **Reward Curves**: Shows raw rewards and moving averages with statistics
-  - **Loss Plots**: Displays training loss with logarithmic scaling
-  - **Exploration Rate**: Shows epsilon decay over training
-  - **PER Metrics**: Multi-plot display of beta values, priority distributions, and TD errors
-  - **Training Overview**: Combines major metrics in a single dashboard view
-  - **Configuration Documentation**: Generates markdown documentation of all training parameters
+### Visualization Tools (`src/visualization.py` and `visualize_agent.py`)
+- **Functionality**: Generates detailed visualizations of training metrics and allows gameplay observation.
+- **Key Features**:
+  - **Training Metrics**: Plots reward curves, loss functions, priority distributions, and TD errors.
+  - **Agent Visualization**: The `visualize_agent.py` script enables real-time observation of agent performance in the Atari environment.
+  - **Customizable Parameters**: Supports experiment ID, checkpoint selection, game speed, difficulty, and number of episodes.
+
+### Gameplay Visualization Script (`visualize_agent.py`)
+- **Functionality**: Provides real-time visualization of agent performance in the Atari environment.
+- **Key Features**:
+  - **Experiment and Checkpoint Loading**: Supports loading specific experiments and checkpoints for visualization.
+  - **Customizable Parameters**:
+    - `--exp_id`: Specify the experiment ID.
+    - `--checkpoint`: Specify the checkpoint file to load.
+    - `--speed`: Adjust the game speed (e.g., slow motion).
+    - `--episodes`: Number of episodes to visualize.
+    - `--difficulty`: Set the game difficulty level.
+  - **Real-Time Gameplay**: Displays the agent's gameplay in the environment for debugging and performance analysis.
+- **Implementation Status**:
+  - ✅ Script implemented and tested for basic functionality.
+  - ✅ Supports all customizable parameters.
+  - ✅ Handles errors gracefully (e.g., missing checkpoints or invalid experiment IDs).
+  - ✅ Compatible with CPU, GPU, and Apple Silicon devices.
+  - ⬜ Future Enhancements:
+    - Add support for saving gameplay as video files.
+    - Include additional metrics during visualization (e.g., live TD error or reward tracking).
 
 ### Training Script (`train.py`)
 - **Functionality**: Coordinates the complete training process

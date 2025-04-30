@@ -150,4 +150,4 @@ LOGGER_DETAILED_INTERVAL = 50  # Episodes between detailed reports (詳細報告
 LOGGER_MAJOR_METRICS = ["reward", "loss", "epsilon", "beta"]  # Main metrics to plot (主要繪圖指標) - 自定義要在概覽圖中顯示的主要指標
 VISUALIZATION_SAVE_INTERVAL = 1000  # Episodes between visualization saves (可視化保存間隔的回合數) - 減少可更頻繁生成可視化但增加I/O和計算負擔，增加可減輕負擔但減少視覺反饋
 
-VISUALIZATION_SPECIFIC_EXPERIMENT = 'exp_20250430_014335' # Specific training run for visualization (可視化的特定訓練運行) - 用於指定要可視化的特定訓練運行，通常用於比較不同運行的結果
+VISUALIZATION_SPECIFIC_EXPERIMENT = '20250430_014335' # Specific training run for visualization (可視化的特定訓練運行) - 用於指定要可視化的特定訓練運行，通常用於比較不同運行的結果

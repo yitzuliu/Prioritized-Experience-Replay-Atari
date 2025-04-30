@@ -1,69 +1,80 @@
-# 理解 PER 指標可視化
+# Prioritized Experience Replay Metrics - Explanation
 
-本文件解釋如何解讀由 `visualization.py` 生成的優先經驗回放 (PER) 指標圖表，特別是 Beta 值、平均優先級和 TD 誤差。
+This document explains how to interpret the metrics visualized by `visualization.py` for Prioritized Experience Replay (PER), focusing on Beta values, Mean Priority, and TD Error.
 
-## Beta 值 (Beta Value)
+*此文件解釋如何解讀由 `visualization.py` 生成的優先經驗回放 (PER) 指標圖表，特別是 Beta 值、平均優先級和 TD 誤差。*
 
-### 什麼是 Beta 值?
-- **定義**: Beta 是用於重要性採樣 (Importance Sampling) 的參數，用來糾正 PER 引入的採樣偏差。
-- **取值範圍**: 從 `BETA_START` (通常為 0.4) 逐漸增加到 1.0。
+---
 
-### 如何解讀 Beta 圖表:
-- **曲線上升**: Beta 值應該從初始值平穩地增加到 1.0。
-- **理想趨勢**: 在訓練初期保持較低值 (專注於高誤差樣本)，然後逐漸增加 (減少採樣偏差)。
-- **太快收斂**: 如果 Beta 在訓練初期就快速接近 1.0，表示可能需要增加 `BETA_FRAMES` 或降低 `BETA_EXPONENT` 來放慢收斂速度。
-- **最終值**: 訓練結束時應接近或等於 1.0，這確保了無偏估計。
+## Beta Value (Beta 值)
 
-### 影響因素:
-- `BETA_START`: 初始 Beta 值
-- `BETA_FRAMES`: Beta 增加到 1.0 的總幀數
-- `BETA_EXPONENT`: 控制 Beta 曲線形狀的指數
+### What is Beta?
+- **Definition**: Beta is a parameter used for importance sampling to correct the sampling bias introduced by PER.
+- **Range**: Increases from `BETA_START` (typically 0.4) to 1.0 over time.
 
-## 平均優先級 (Mean Priority)
+### How to Interpret the Beta Chart
+- **Rising Curve**: Beta should increase smoothly from its initial value to 1.0.
+- **Ideal Trend**: Starts low during early training (focus on high-error samples), then gradually increases (reduce sampling bias).
+- **Too Fast Convergence**: If Beta quickly approaches 1.0 early in training, consider increasing `BETA_FRAMES` or reducing `BETA_EXPONENT` to slow convergence.
+- **Final Value**: Should approach or equal 1.0 by the end of training to ensure unbiased estimation.
 
-### 什麼是優先級?
-- **定義**: 每個經驗的優先級決定了它在經驗回放中被採樣的概率。
-- **計算方式**: Priority = |TD 誤差|^α + ε，其中 α 是 `ALPHA` 參數，ε 是 `EPSILON_PER` 常數。
+### Key Factors
+- `BETA_START`: Initial Beta value
+- `BETA_FRAMES`: Total frames over which Beta increases to 1.0
+- `BETA_EXPONENT`: Exponent controlling the shape of the Beta curve
 
-### 如何解讀平均優先級圖表:
-- **初始階段**: 訓練開始時通常較高 (初期誤差大)。
-- **中期趨勢**: 隨著學習進行，應該逐漸下降並趨於穩定。
-- **波動**: 突然的峰值表示遇到了罕見或難以學習的經驗。
-- **長期穩定**: 如果長期保持高水平而不下降，可能表示學習困難或算法參數需要調整。
+---
 
-### 影響因素:
-- `ALPHA`: 控制優先級的非線性程度，較高的值會更強調高誤差樣本
-- 訓練穩定性: 穩定的訓練會導致較低的平均優先級
+## Mean Priority (平均優先級)
 
-## TD 誤差 (Temporal Difference Error)
+### What is Priority?
+- **Definition**: The priority of each experience determines its probability of being sampled during replay.
+- **Formula**: Priority = |TD Error|^α + ε, where α is the `ALPHA` parameter and ε is the `EPSILON_PER` constant.
 
-### 什麼是 TD 誤差?
-- **定義**: TD 誤差是實際觀察到的獎勵加上折扣後的估計值與當前估計值之間的差異。
-- **數學表達式**: δ = r + γ·max_a Q'(s', a) - Q(s, a)，其中 r 是獎勵，γ 是折扣因子。
+### How to Interpret the Mean Priority Chart
+- **Initial Phase**: Typically high at the start of training (large initial errors).
+- **Mid-Training Trend**: Should gradually decrease and stabilize as learning progresses.
+- **Spikes**: Sudden peaks indicate rare or difficult-to-learn experiences.
+- **Long-Term Stability**: Persistent high values may indicate learning difficulties or the need for parameter adjustments.
 
-### 如何解讀 TD 誤差圖表:
-- **高初始值**: 訓練開始時通常較高，表示估計不準確。
-- **逐漸下降**: 隨著訓練進行，TD 誤差應該逐漸減小，表示估計越來越準確。
-- **突然增加**: 可能表示探索到新區域或環境動態變化。
-- **穩定水平**: 最終應該收斂到一個低且相對穩定的水平，表示 Q 網絡學習良好。
+### Key Factors
+- `ALPHA`: Controls the non-linearity of priority, with higher values emphasizing high-error samples
+- Training Stability: Stable training leads to lower mean priority over time
 
-### 影響因素:
-- `GAMMA`: 未來獎勵的折扣因子
-- `LEARNING_RATE`: 較高的學習率可能導致更大的 TD 誤差波動
-- 環境隨機性: 隨機性更高的環境通常會有更高的 TD 誤差
+---
 
-## 三者之間的關係
+## Temporal Difference (TD) Error (時序差分誤差)
 
-- **Beta 和優先級**: Beta 值增加時，高優先級樣本的影響被降低，使學習更加穩定。
-- **優先級和 TD 誤差**: 優先級直接源於 TD 誤差，因此這兩條曲線通常具有相似的形狀。
-- **整體解讀**: 理想情況下，隨著訓練進行，Beta 應該增加，而優先級和 TD 誤差應該減小，表示學習正在有效進行。
+### What is TD Error?
+- **Definition**: The difference between the observed reward plus discounted future estimate and the current estimate.
+- **Formula**: δ = r + γ·max_a Q'(s', a) - Q(s, a), where r is the reward and γ is the discount factor.
 
-## 調整建議
+### How to Interpret the TD Error Chart
+- **High Initial Values**: Typically high at the start of training, indicating inaccurate estimates.
+- **Gradual Decrease**: Should decrease over time as the Q-network learns better estimates.
+- **Sudden Increases**: May indicate exploration of new areas or changes in environment dynamics.
+- **Stable Level**: Should converge to a low and relatively stable level, indicating good Q-network learning.
 
-如果這些指標顯示異常趨勢，可考慮以下調整:
+### Key Factors
+- `GAMMA`: Discount factor for future rewards
+- `LEARNING_RATE`: Higher learning rates may cause larger TD error fluctuations
+- Environment Stochasticity: Higher randomness in the environment leads to higher TD errors
 
-1. **Beta 收斂過快**: 增加 `BETA_FRAMES` 或降低 `BETA_EXPONENT`
-2. **優先級持續高**: 可能需要降低 `LEARNING_RATE` 或增加 `BATCH_SIZE` 以穩定學習
-3. **TD 誤差不下降**: 檢查 `LEARNING_RATE`、`GAMMA` 或網絡架構是否適合當前任務
-4. **所有指標波動大**: 考慮增加 `MEMORY_CAPACITY` 來改善樣本多樣性
-```
+---
+
+## Relationships Between Metrics
+
+- **Beta and Priority**: As Beta increases, the influence of high-priority samples is reduced, stabilizing learning.
+- **Priority and TD Error**: Priority is directly derived from TD Error, so these curves often share similar shapes.
+- **Overall Interpretation**: Ideally, Beta should increase while Priority and TD Error decrease, indicating effective learning.
+
+---
+
+## Adjustment Recommendations
+
+If these metrics show abnormal trends, consider the following adjustments:
+
+1. **Beta Converges Too Quickly**: Increase `BETA_FRAMES` or reduce `BETA_EXPONENT`.
+2. **High Priority Persists**: Lower `LEARNING_RATE` or increase `BATCH_SIZE` to stabilize learning.
+3. **TD Error Does Not Decrease**: Check `LEARNING_RATE`, `GAMMA`, or network architecture suitability.
+4. **High Metric Volatility**: Increase `MEMORY_CAPACITY` to improve sample diversity.

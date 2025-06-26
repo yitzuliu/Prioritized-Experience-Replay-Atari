@@ -1,14 +1,32 @@
-# 核心依賴
+# Core Dependencies
 torch>=2.0.0
 gymnasium[atari]>=0.28.1
 numpy>=1.20.0
 matplotlib>=3.5.0
 
-# 工具和輔助庫
+# System Monitoring and Performance
 psutil>=5.9.0
+
+# Image Processing and Visualization
 pillow>=9.0.0
+
+# Progress Bars and UI
 tqdm>=4.65.0
 
-# 可選依賴（開發與測試）
+# Development and Testing Dependencies
 pytest>=7.0.0
 ipython>=8.0.0
+
+# Additional Dependencies for Enhanced Features
+# Note: The following are built-in Python modules used by our improvements:
+# - threading (background performance monitoring)
+# - json (configuration and performance reports)
+# - warnings (enhanced error handling)
+# - gc (memory management)
+# - traceback (detailed error reporting)
+# - datetime (timestamping)
+# - collections (data structures)
+# - tempfile (temporary file handling)
+# - signal (graceful interruption handling)
+# - os, sys (system operations)
+# - time (timing operations)

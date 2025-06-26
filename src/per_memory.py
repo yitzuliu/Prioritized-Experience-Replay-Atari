@@ -14,6 +14,9 @@ and sampled according to their importance.
 import numpy as np
 import os
 import sys
+import gc
+import psutil
+import warnings
 from collections import namedtuple
 
 # Add parent directory to path to import config.py
@@ -29,14 +32,16 @@ Transition = namedtuple('Transition',
 
 class PERMemory:
     """
-    Prioritized Experience Replay Memory.
+    Enhanced Prioritized Experience Replay Memory with optimization features.
     
     Stores transitions with priorities and samples them based on their
-    importance using a SumTree data structure.
+    importance using a SumTree data structure. Includes memory monitoring,
+    batch optimization, and efficient priority management.
     
-    優先經驗回放記憶體。
+    增強型優先經驗回放記憶體，具有優化功能。
     
-    使用優先級存儲轉換，並使用 SumTree 數據結構根據其重要性進行採樣。
+    使用 SumTree 數據結構根據重要性存儲和採樣轉換。包括記憶體監控、
+    批處理優化和高效的優先級管理。
     """
     
     def __init__(self, memory_capacity=config.MEMORY_CAPACITY, 
@@ -45,7 +50,7 @@ class PERMemory:
                  beta_frames=config.BETA_FRAMES,
                  epsilon=config.EPSILON_PER):
         """
-        Initialize the PER memory.
+        Initialize the enhanced PER memory.
         
         Args:
             memory_capacity: Maximum capacity of the memory
@@ -54,14 +59,7 @@ class PERMemory:
             beta_frames: Number of frames over which beta will anneal from beta_start to 1.0
             epsilon: Small constant added to priorities to ensure non-zero probability
             
-        初始化 PER 記憶體。
-        
-        參數：
-            memory_capacity: 記憶體的最大容量
-            alpha: 優先級指數（控制使用多少優先級）
-            beta_start: 初始重要性採樣權重係數
-            beta_frames: beta 將從 beta_start 增加到 1.0 的幀數
-            epsilon: 添加到優先級的小常數，確保非零概率
+        初始化增強型 PER 記憶體。
         """
         # Initialize the SumTree
         self.sumtree = SumTree(memory_capacity)
@@ -81,6 +79,77 @@ class PERMemory:
         
         # Maximum priority to use for new experiences
         self.max_priority = 1.0
+        
+        # Enhanced features
+        self._priority_cache = {}  # Cache frequently used priorities
+        self._batch_cache_size = 32  # Size of priority cache
+        self._memory_warning_threshold = 0.9  # Memory warning at 90%
+        self._last_gc_frame = 0  # Track garbage collection timing
+        self._gc_frequency = 10000  # Garbage collect every N frames
+        self._performance_stats = {
+            'samples_drawn': 0,
+            'priorities_updated': 0,
+            'cache_hits': 0,
+            'cache_misses': 0
+        }
+    
+    def get_memory_usage(self):
+        """
+        Get current memory usage statistics.
+        
+        獲取當前記憶體使用統計。
+        
+        Returns:
+            dict: Memory usage statistics
+        """
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        memory_percent = process.memory_percent()
+        
+        return {
+            'rss_bytes': memory_info.rss,
+            'vms_bytes': memory_info.vms,
+            'percent': memory_percent,
+            'tree_size': self.sumtree.experience_count,
+            'cache_size': len(self._priority_cache)
+        }
+    
+    def _check_memory_and_cleanup(self):
+        """
+        Check memory usage and perform cleanup if necessary.
+        
+        檢查記憶體使用並在必要時執行清理。
+        """
+        memory_stats = self.get_memory_usage()
+        
+        if memory_stats['percent'] > self._memory_warning_threshold * 100:
+            warnings.warn(f"High memory usage: {memory_stats['percent']:.1f}%")
+            
+            # Clear priority cache
+            self._priority_cache.clear()
+            
+            # Force garbage collection
+            gc.collect()
+            
+            # Update last GC frame
+            self._last_gc_frame = self.frame_count
+    
+    def _periodic_cleanup(self):
+        """
+        Perform periodic cleanup operations.
+        
+        執行定期清理操作。
+        """
+        if self.frame_count - self._last_gc_frame >= self._gc_frequency:
+            # Clear cache periodically
+            if len(self._priority_cache) > self._batch_cache_size * 2:
+                # Keep only the most recent entries
+                items = list(self._priority_cache.items())
+                self._priority_cache = dict(items[-self._batch_cache_size:])
+            
+            # Run garbage collection
+            gc.collect()
+            self._last_gc_frame = self.frame_count
     
     def update_beta(self, frame_idx):
         """
@@ -90,9 +159,6 @@ class PERMemory:
             frame_idx: Current frame index
 
         根據當前訓練進度更新 beta 參數。
-        
-        參數：
-            frame_idx: 當前幀索引
         """
         self.frame_count = frame_idx
         
@@ -101,153 +167,207 @@ class PERMemory:
         # Adjust beta using a non-linear function
         adjusted_progress = progress ** config.BETA_EXPONENT  # Non-linear scaling
         self.beta = min(1.0, self.beta_start + adjusted_progress * (1.0 - self.beta_start))
+        
+        # Perform periodic cleanup
+        self._periodic_cleanup()
     
     def _calculate_priority(self, td_error):
         """
-        Calculate priority from TD-error.
+        Calculate priority from TD-error with caching.
+        
+        根據 TD 誤差計算優先級（帶緩存）。
         
         Args:
             td_error: TD-error
             
         Returns:
             float: Priority value
-            
-        根據 TD 誤差計算優先級。
-        
-        參數：
-            td_error: TD 誤差
-            
-        返回：
-            float: 優先級值
         """
-        # Convert TD-error to priority using the formula from the PER paper
+        # Round TD error for caching (reduces cache size)
+        rounded_error = round(float(td_error), 6)
+        
+        # Check cache first
+        if rounded_error in self._priority_cache:
+            self._performance_stats['cache_hits'] += 1
+            return self._priority_cache[rounded_error]
+        
+        # Calculate priority using the formula from the PER paper
         # priority = (|δ| + ε)^α
-        return (np.abs(td_error) + self.epsilon) ** self.alpha
+        priority = (np.abs(rounded_error) + self.epsilon) ** self.alpha
+        
+        # Cache the result if cache isn't too large
+        if len(self._priority_cache) < self._batch_cache_size * 2:
+            self._priority_cache[rounded_error] = priority
+        
+        self._performance_stats['cache_misses'] += 1
+        return priority
     
     def add(self, state, action, reward, next_state, done, td_error=None):
         """
-        Add a new transition to the memory.
+        Add a new transition to the memory with enhanced error handling.
         
-        Args:
-            state: Current state
-            action: Action taken
-            reward: Reward received
-            next_state: Next state
-            done: Whether episode ended
-            td_error: TD-error. If None, max priority is used
-            
-        將新的轉換添加到記憶體中。
-        
-        參數：
-            state: 當前狀態
-            action: 採取的動作
-            reward: 獲得的獎勵
-            next_state: 下一個狀態
-            done: 回合是否結束
-            td_error: TD 誤差。如果為 None，則使用最大優先級
+        將新的轉換添加到記憶體中（帶增強錯誤處理）。
         """
-        # Create transition
-        transition = Transition(state, action, reward, next_state, done)
-        
-        # Calculate priority
-        if td_error is None:
-            priority = self.max_priority
-        else:
-            priority = self._calculate_priority(td_error)
-            self.max_priority = max(self.max_priority, priority)
-        
-        # Add to SumTree
-        self.sumtree.add(priority, transition)
+        try:
+            # Validate inputs
+            if state is None or next_state is None:
+                raise ValueError("State and next_state cannot be None")
+            
+            if not isinstance(action, (int, np.integer)):
+                raise ValueError("Action must be an integer")
+            
+            if not isinstance(reward, (int, float, np.number)):
+                raise ValueError("Reward must be a number")
+            
+            if not isinstance(done, (bool, np.bool_)):
+                raise ValueError("Done must be a boolean")
+            
+            # Create transition
+            transition = Transition(state, action, reward, next_state, done)
+            
+            # Calculate priority
+            if td_error is None:
+                priority = self.max_priority
+            else:
+                priority = self._calculate_priority(td_error)
+                self.max_priority = max(self.max_priority, priority)
+            
+            # Add to SumTree
+            self.sumtree.add(priority, transition)
+            
+            # Check memory usage periodically
+            if self.sumtree.experience_count % 1000 == 0:
+                self._check_memory_and_cleanup()
+                
+        except Exception as e:
+            warnings.warn(f"Error adding transition to memory: {str(e)}")
+            raise
     
     def sample(self, batch_size):
         """
-        Sample a batch of transitions based on their priorities.
+        Enhanced sample method with better error handling and optimization.
         
-        Args:
-            batch_size: Size of the batch to sample
-            
-        Returns:
-            tuple: (batch_indices, batch_weights, batch_transitions)
-                batch_indices: Indices of sampled transitions in the tree
-                batch_weights: Importance sampling weights for the batch
-                batch_transitions: Sampled transitions
-                
-        根據優先級採樣一批轉換。
-        
-        參數：
-            batch_size: 要採樣的批次大小
-            
-        返回：
-            tuple: (batch_indices, batch_weights, batch_transitions)
-                batch_indices: 樹中採樣的轉換索引
-                batch_weights: 批次的重要性採樣權重
-                batch_transitions: 採樣的轉換
+        增強的採樣方法，具有更好的錯誤處理和優化。
         """
-        # Lists to store the sampled data
-        batch_indices = np.zeros(batch_size, dtype=np.int32)
-        batch_weights = np.zeros(batch_size, dtype=np.float32)
-        batch_transitions = []
+        if self.sumtree.experience_count < batch_size:
+            raise ValueError(f"Not enough samples in memory: {self.sumtree.experience_count} < {batch_size}")
         
-        # Calculate segment size
-        segment_size = self.sumtree.total_priority() / batch_size
-        
-        # Current beta for importance sampling weights
-        current_beta = self.beta
-        
-        # Calculate the maximum weight for normalization
-        min_prob = np.min(self.sumtree.get_all_priorities()) / self.sumtree.total_priority()
-        max_weight = (min_prob * self.sumtree.experience_count) ** (-current_beta)
-        
-        # Sample from each segment
-        for i in range(batch_size):
-            # Get the segment bounds
-            segment_start = segment_size * i
-            segment_end = segment_size * (i + 1)
+        try:
+            # Lists to store the sampled data
+            batch_indices = np.zeros(batch_size, dtype=np.int32)
+            batch_weights = np.zeros(batch_size, dtype=np.float32)
+            batch_transitions = []
             
-            # Sample a value from the segment
-            value = np.random.uniform(segment_start, segment_end)
+            # Calculate segment size
+            total_priority = self.sumtree.total_priority()
+            if total_priority <= 0:
+                raise ValueError("Total priority must be positive")
             
-            # Get the transition, its index and priority
-            idx, priority, transition = self.sumtree.get_experience_by_priority(value)
+            segment_size = total_priority / batch_size
             
-            # Store the index
-            batch_indices[i] = idx
+            # Current beta for importance sampling weights
+            current_beta = self.beta
             
-            # Calculate sampling weight
-            sample_prob = priority / self.sumtree.total_priority()
-            weight = (sample_prob * self.sumtree.experience_count) ** (-current_beta)
+            # Calculate the maximum weight for normalization
+            all_priorities = self.sumtree.get_all_priorities()
+            if len(all_priorities) == 0:
+                raise ValueError("No priorities available")
             
-            # Normalize weight to be <= 1
-            batch_weights[i] = weight / max_weight
+            min_prob = np.min(all_priorities[all_priorities > 0]) / total_priority
+            max_weight = (min_prob * self.sumtree.experience_count) ** (-current_beta)
             
-            # Store the transition
-            batch_transitions.append(transition)
-        
-        return batch_indices, batch_weights, batch_transitions
+            # Sample from each segment
+            for i in range(batch_size):
+                # Get the segment bounds
+                segment_start = segment_size * i
+                segment_end = segment_size * (i + 1)
+                
+                # Sample a value from the segment
+                value = np.random.uniform(segment_start, segment_end)
+                
+                # Get the transition, its index and priority
+                idx, priority, transition = self.sumtree.get_experience_by_priority(value)
+                
+                if transition is None:
+                    raise ValueError(f"Retrieved None transition at index {idx}")
+                
+                # Store the index
+                batch_indices[i] = idx
+                
+                # Calculate sampling weight
+                sample_prob = priority / total_priority
+                weight = (sample_prob * self.sumtree.experience_count) ** (-current_beta)
+                
+                # Normalize weight to be <= 1
+                batch_weights[i] = weight / max_weight
+                
+                # Store the transition
+                batch_transitions.append(transition)
+            
+            self._performance_stats['samples_drawn'] += batch_size
+            return batch_indices, batch_weights, batch_transitions
+            
+        except Exception as e:
+            warnings.warn(f"Error sampling from memory: {str(e)}")
+            raise
     
     def update_priorities(self, indices, td_errors):
         """
-        Update priorities of transitions based on new TD-errors.
+        Enhanced priority update with batch processing and error handling.
         
-        Args:
-            indices: Tree indices of transitions to update
-            td_errors: New TD-errors
-            
-        根據新的 TD 誤差更新轉換的優先級。
-        
-        參數：
-            indices: 要更新的轉換的樹索引
-            td_errors: 新的 TD 誤差
+        增強的優先級更新，具有批處理和錯誤處理。
         """
-        for idx, error in zip(indices, td_errors):
-            # Calculate new priority
-            priority = self._calculate_priority(error)
+        try:
+            if len(indices) != len(td_errors):
+                raise ValueError("Indices and td_errors must have the same length")
             
-            # Update max priority
-            self.max_priority = max(self.max_priority, priority)
+            # Batch process priorities for efficiency
+            new_priorities = []
+            for error in td_errors:
+                if not isinstance(error, (int, float, np.number)):
+                    warnings.warn(f"Invalid TD error type: {type(error)}, converting to float")
+                    error = float(error)
+                
+                priority = self._calculate_priority(error)
+                new_priorities.append(priority)
+                
+                # Update max priority
+                self.max_priority = max(self.max_priority, priority)
             
-            # Update priority in the tree
-            self.sumtree.update_priority(idx, priority)
+            # Update priorities in the tree
+            for idx, priority in zip(indices, new_priorities):
+                self.sumtree.update_priority(idx, priority)
+            
+            self._performance_stats['priorities_updated'] += len(indices)
+            
+        except Exception as e:
+            warnings.warn(f"Error updating priorities: {str(e)}")
+            raise
+    
+    def get_performance_stats(self):
+        """
+        Get performance statistics for monitoring and debugging.
+        
+        獲取性能統計信息用於監控和調試。
+        
+        Returns:
+            dict: Performance statistics
+        """
+        cache_hit_rate = 0.0
+        if self._performance_stats['cache_hits'] + self._performance_stats['cache_misses'] > 0:
+            cache_hit_rate = self._performance_stats['cache_hits'] / (
+                self._performance_stats['cache_hits'] + self._performance_stats['cache_misses']
+            )
+        
+        return {
+            'samples_drawn': self._performance_stats['samples_drawn'],
+            'priorities_updated': self._performance_stats['priorities_updated'],
+            'cache_hit_rate': cache_hit_rate,
+            'cache_size': len(self._priority_cache),
+            'memory_usage': self.get_memory_usage(),
+            'max_priority': self.max_priority,
+            'beta': self.beta
+        }
     
     def __len__(self):
         """
@@ -257,9 +377,6 @@ class PERMemory:
             int: Number of stored transitions
             
         獲取記憶體的當前大小。
-        
-        返回：
-            int: 存儲的轉換數量
         """
         return self.sumtree.experience_count
 

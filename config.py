@@ -9,6 +9,7 @@ DQN 在 Atari 遊戲上訓練的配置文件。
 本文件包含項目中使用的所有超參數和設置，按類別組織以提高可讀性和可管理性。
 """
 import os
+import warnings
 
 ###############################
 # GAME ENVIRONMENT SETTINGS
@@ -19,20 +20,20 @@ import os
 # 基本環境設置
 ENV_NAME = 'ALE/MsPacman-v5'  # Environment name (游戲環境名稱)
 ACTION_SPACE_SIZE = 9  # Number of possible actions in the game (遊戲中可能的動作數量)
-DIFFICULTY = 0  # Game difficulty level from 0-4, 0 is easiest (游戲難度等級，0-4，0為最簡單) - 增加難度可測試算法在更複雜環境中的表現，但會增加學習難度
+DIFFICULTY = 0  # Game difficulty level from 0-4, 0 is easiest (游戲難度等級，0-4，0為最簡單) - Testing with higher difficulty can evaluate algorithm performance in more complex environments, but increases learning difficulty
 
 # Frame processing settings
 # 幀處理設置
-FRAME_WIDTH = 84  # Width of processed frame, downscaled from 160 (處理後的幀寬度，從160縮小) - 增加會提供更詳細的視覺信息，但增加網絡計算負擔
-FRAME_HEIGHT = 84  # Height of processed frame, downscaled from 210 (處理後的幀高度，從210縮小) - 同上，更高解析度需要更大的網絡結構
-FRAME_STACK = 4  # Number of frames to stack for temporal information (堆疊的幀數量，用於時間序列信息) - 增加可捕捉更長時間序列但增加記憶體使用，減少可能導致時間信息不足
-FRAME_SKIP = 4  # Frames to skip between agent actions (智能體動作之間跳過的幀數) - 減少可增加決策頻率但訓練較慢，增加可加速訓練但可能錯過重要狀態
-NOOP_MAX = 30  # Maximum number of no-op actions at episode start (回合開始時最大無操作動作數) - 增加有助於探索更多起始狀態，但可能浪費訓練步數
+FRAME_WIDTH = 84  # Width of processed frame, downscaled from 160 (處理後的幀寬度，從160縮小) - Increasing provides more detailed visual information but increases network computational burden
+FRAME_HEIGHT = 84  # Height of processed frame, downscaled from 210 (處理後的幀高度，從210縮小) - Same as above, higher resolution requires larger network structure
+FRAME_STACK = 4  # Number of frames to stack for temporal information (堆疊的幀數量，用於時間序列信息) - Increasing can capture longer temporal sequences but increases memory usage, decreasing may lead to insufficient temporal information
+FRAME_SKIP = 4  # Frames to skip between agent actions (智能體動作之間跳過的幀數) - Decreasing can increase decision frequency but slower training, increasing can accelerate training but may miss important states
+NOOP_MAX = 30  # Maximum number of no-op actions at episode start (回合開始時最大無操作動作數) - Increasing helps explore more initial states but may waste training steps
 
 # Visualization settings
 # 視覺化設置
-RENDER_MODE = None  # Render mode for visualization, None for training speed (渲染模式，訓練時設為None以提高速度) - 設為'human'可觀察智能體但會大幅降低訓練速度
-TRAINING_MODE = True  # Training mode flag to disable rendering (訓練模式標誌，禁用渲染) - 設為False將啟用渲染，僅用於測試
+RENDER_MODE = None  # Render mode for visualization, None for training speed (渲染模式，訓練時設為None以提高速度) - Set to 'human' to observe agent but will significantly reduce training speed
+TRAINING_MODE = True  # Training mode flag to disable rendering (訓練模式標誌，禁用渲染) - Set to False will enable rendering, for testing only
 
 ###############################
 # DEEP Q-LEARNING PARAMETERS
@@ -41,24 +42,24 @@ TRAINING_MODE = True  # Training mode flag to disable rendering (訓練模式標
 
 # Core DQN parameters
 # 核心DQN參數
-LEARNING_RATE = 0.0001  # Learning rate for Adam optimizer (Adam優化器的學習率) - 增加可加快學習但可能不穩定，減少可提高穩定性但學習較慢
-GAMMA = 0.99  # Discount factor for future rewards (未來獎勵的折扣因子) - 增加使智能體更重視長期獎勵，減少則更關注即時獎勵
-BATCH_SIZE = 32  # Batch size for training updates (訓練更新的批次大小) - 增加可提供更穩定的梯度估計但增加記憶體消耗，減少可能導致訓練不穩定
-MEMORY_CAPACITY = 500000  # Experience replay memory capacity (經驗回放記憶體容量) - 增加可儲存更多多樣化經驗但增加記憶體用量，減少可能導致過度擬合近期經驗
-TARGET_UPDATE_FREQUENCY = 10000  # Steps between target network updates (目標網絡更新間隔步數) - 增加提高訓練穩定性但降低學習速度，減少提高學習速度但可能導致不穩定振盪
-TRAINING_EPISODES = 100000  # Total training episodes (總訓練回合數) - 增加可提高最終性能但延長訓練時間，減少可加快實驗但可能無法充分學習
+LEARNING_RATE = 0.0001  # Learning rate for Adam optimizer (Adam優化器的學習率) - Increasing can accelerate learning but may be unstable, decreasing can improve stability but slower learning
+GAMMA = 0.99  # Discount factor for future rewards (未來獎勵的折扣因子) - Increasing makes agent value long-term rewards more, decreasing focuses more on immediate rewards
+BATCH_SIZE = 32  # Batch size for training updates (訓練更新的批次大小) - Increasing provides more stable gradient estimation but increases memory consumption, decreasing may lead to unstable training
+MEMORY_CAPACITY = 500000  # Experience replay memory capacity (經驗回放記憶體容量) - Increasing can store more diverse experiences but increases memory usage, decreasing may lead to overfitting to recent experiences
+TARGET_UPDATE_FREQUENCY = 10000  # Steps between target network updates (目標網絡更新間隔步數) - Increasing improves training stability but reduces learning speed, decreasing improves learning speed but may cause unstable oscillations
+TRAINING_EPISODES = 100000  # Total training episodes (總訓練回合數) - Increasing can improve final performance but extends training time, decreasing can speed up experiments but may not learn sufficiently
 
 # Exploration parameters
 # 探索參數
-EPSILON_START = 1.0  # Initial exploration rate (初始探索率) - 保持較高可確保初期充分探索環境，降低則更早利用已知策略
-EPSILON_END = 0.05  # Final exploration rate (最終探索率) - 增加可確保持續探索新策略，減少則更專注於利用學到的策略
-EPSILON_DECAY = 1700000  # Steps over which epsilon decays (epsilon衰減的步數) - 增加使探索率下降更慢，確保更長時間的探索，減少則更快地專注於利用學到的策略
-DEFAULT_EVALUATE_MODE = False  # Default evaluation mode (默認評估模式) - 設為True時禁用探索，僅用於評估不影響訓練
+EPSILON_START = 1.0  # Initial exploration rate (初始探索率) - Keeping high ensures thorough early exploration of environment, lowering leads to earlier exploitation of known strategies
+EPSILON_END = 0.05  # Final exploration rate (最終探索率) - Increasing ensures continued exploration of new strategies, decreasing focuses more on exploiting learned strategies
+EPSILON_DECAY = 1700000  # Steps over which epsilon decays (epsilon衰減的步數) - Increasing makes exploration rate decay slower, ensuring longer exploration period, decreasing focuses faster on exploiting learned strategies
+DEFAULT_EVALUATE_MODE = False  # Default evaluation mode (默認評估模式) - When set to True disables exploration, for evaluation only without affecting training
 
 # Training control parameters
 # 訓練控制參數
-LEARNING_STARTS = 20000  # Steps before starting learning (開始學習前的步數) - 增加可收集更多隨機經驗確保多樣性，減少可加速開始學習
-UPDATE_FREQUENCY = 2  # Steps between network updates (網絡更新間隔步數) - 減少可更頻繁更新網絡加速學習，增加可減少計算負擔但可能減慢學習
+LEARNING_STARTS = 20000  # Steps before starting learning (開始學習前的步數) - Increasing can collect more random experiences ensuring diversity, decreasing can accelerate start of learning
+UPDATE_FREQUENCY = 2  # Steps between network updates (網絡更新間隔步數) - Decreasing can update network more frequently to accelerate learning, increasing can reduce computational burden but may slow learning
 
 ###############################
 # PRIORITIZED EXPERIENCE REPLAY PARAMETERS
@@ -67,61 +68,61 @@ UPDATE_FREQUENCY = 2  # Steps between network updates (網絡更新間隔步數)
 
 # Whether to use Prioritized Experience Replay
 # 是否使用優先經驗回放
-USE_PER = True  # Enable Prioritized Experience Replay (啟用優先經驗回放) - 設為False時使用標準均勻採樣，PER通常提升樣本效率但增加計算複雜度
+USE_PER = True  # Enable Prioritized Experience Replay (啟用優先經驗回放) - When set to False uses standard uniform sampling, PER typically improves sample efficiency but increases computational complexity
 
 # PER hyperparameters
 # PER超參數
-ALPHA = 0.6  # Priority exponent for sampling probability (優先級指數，用於採樣概率) - 增加強化高誤差樣本採樣頻率，減少使採樣更接近均勻
-BETA_START = 0.4  # Initial importance sampling weight value (初始重要性採樣權重值) - 增加可減少初期偏差但可能減慢收斂，保持低值使初期學習更聚焦於高誤差樣本
-BETA_FRAMES = 1700000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - 增加使偏差校正更平緩但延長非均衡學習階段，減少可加速達到無偏學習
-BETA_EXPONENT = 1.02  # Exponent for beta increase (beta增加的指數) - 增加可使beta增長更快，減少則增長更平緩
-EPSILON_PER = 1e-6  # Small constant for priority calculation (優先級計算的小常數) - 確保所有經驗都有非零優先級，防止某些經驗永不被採樣
+ALPHA = 0.6  # Priority exponent for sampling probability (優先級指數，用於採樣概率) - Increasing reinforces high-error sample sampling frequency, decreasing makes sampling closer to uniform
+BETA_START = 0.4  # Initial importance sampling weight value (初始重要性採樣權重值) - Increasing can reduce initial bias but may slow convergence, keeping low value makes early learning more focused on high-error samples
+BETA_FRAMES = 1700000  # Frames over which beta increases to 1.0 (beta增加到1.0的幀數) - Increasing makes bias correction more gradual but extends unbalanced learning phase, decreasing can accelerate reaching unbiased learning
+BETA_EXPONENT = 1.02  # Exponent for beta increase (beta增加的指數) - Increasing can make beta grow faster, decreasing makes growth more gradual
+EPSILON_PER = 1e-6  # Small constant for priority calculation (優先級計算的小常數) - Ensures all experiences have non-zero priority, preventing some experiences from never being sampled
 
 # SumTree settings
 # 總和樹設置
-TREE_CAPACITY = MEMORY_CAPACITY  # Size of the sum tree (與記憶體容量一致) - 應與記憶體容量保持一致，否則可能導致記憶體使用不一致
-DEFAULT_NEW_PRIORITY = 1.0  # Default priority for new experiences (新經驗的默認優先級) - 設置新經驗的初始優先級，影響新加入經驗被採樣的機會
+TREE_CAPACITY = MEMORY_CAPACITY  # Size of the sum tree (與記憶體容量一致) - Should remain consistent with memory capacity, otherwise may lead to inconsistent memory usage
+DEFAULT_NEW_PRIORITY = 1.0  # Default priority for new experiences (新經驗的默認優先級) - Sets initial priority for new experiences, affects the chance of newly added experiences being sampled
 
 # PER Logging Configuration
-PER_LOG_FREQUENCY = 100  # Steps between PER metrics logging (PER指標記錄的步數間隔) - 減少可提供更詳細的PER指標記錄但增加日誌大小
-PER_BATCH_SIZE = 50  # Batch size for PER data writes (PER數據寫入的批次大小) - 增加可減少I/O操作但增加記憶體使用，減少可減輕記憶體負擔但增加I/O頻率
+PER_LOG_FREQUENCY = 100  # Steps between PER metrics logging (PER指標記錄的步數間隔) - Decreasing can provide more detailed PER metrics logging but increases log size
+PER_BATCH_SIZE = 50  # Batch size for PER data writes (PER數據寫入的批次大小) - Increasing can reduce I/O operations but increases memory usage, decreasing can reduce memory burden but increases I/O frequency
 
 ###############################
 # NEURAL NETWORK SETTINGS
 # 神經網絡設置
 ###############################
 
-USE_ONE_CONV_LAYER = False  # Whether to use a single convolutional layer (是否使用單個卷積層) - 簡化模型結構，降低計算需求但可能減弱特徵提取能力
-USE_TWO_CONV_LAYERS = True  # Whether to use two convolutional layers (是否使用兩個卷積層) - 中等複雜度，平衡計算效率和特徵提取能力
-USE_THREE_CONV_LAYERS = False  # Whether to use three convolutional layers (是否使用三個卷積層) - 增加模型複雜度和表達能力，提高特徵提取但增加計算需求
+USE_ONE_CONV_LAYER = False  # Whether to use a single convolutional layer (是否使用單個卷積層) - Simplifies model structure, reduces computational requirements but may weaken feature extraction capability
+USE_TWO_CONV_LAYERS = True  # Whether to use two convolutional layers (是否使用兩個卷積層) - Medium complexity, balances computational efficiency and feature extraction capability
+USE_THREE_CONV_LAYERS = False  # Whether to use three convolutional layers (是否使用三個卷積層) - Increases model complexity and expressiveness, improves feature extraction but increases computational requirements
 
 # First convolutional layer parameters
 # 第一卷積層參數
-CONV1_CHANNELS = 32  # Number of filters in first conv layer (第一卷積層過濾器數量) - 增加可提取更多基本特徵但增加計算量
-CONV1_KERNEL_SIZE = 8  # Kernel size for first conv layer (第一卷積層核大小) - 增加可捕捉更大視野範圍的特徵，減少則更專注於細節
-CONV1_STRIDE = 4  # Stride for first conv layer (第一卷積層步幅) - 增加可減少輸出特徵圖大小節省計算，減少可保留更多空間信息但增加計算量
+CONV1_CHANNELS = 32  # Number of filters in first conv layer (第一卷積層過濾器數量) - Increasing can extract more basic features but increases computation
+CONV1_KERNEL_SIZE = 8  # Kernel size for first conv layer (第一卷積層核大小) - Increasing can capture features with larger field of view, decreasing focuses more on details
+CONV1_STRIDE = 4  # Stride for first conv layer (第一卷積層步幅) - Increasing can reduce output feature map size saving computation, decreasing can preserve more spatial information but increases computation
 
 # Second convolutional layer parameters
 # 第二卷積層參數
-CONV2_CHANNELS = 64  # Number of filters in second conv layer (第二卷積層過濾器數量) - 增加可提取更複雜的特徵組合但增加計算需求
-CONV2_KERNEL_SIZE = 4  # Kernel size for second conv layer (第二卷積層核大小) - 影響中階特徵的感受野大小
-CONV2_STRIDE = 2  # Stride for second conv layer (第二卷積層步幅) - 控制特徵圖尺寸減少的速率
+CONV2_CHANNELS = 64  # Number of filters in second conv layer (第二卷積層過濾器數量) - Increasing can extract more complex feature combinations but increases computational requirements
+CONV2_KERNEL_SIZE = 4  # Kernel size for second conv layer (第二卷積層核大小) - Affects receptive field size of mid-level features
+CONV2_STRIDE = 2  # Stride for second conv layer (第二卷積層步幅) - Controls the rate of feature map size reduction
 
 # Third convolutional layer parameters
 # 第三卷積層參數
-CONV3_CHANNELS = 64  # Number of filters in third conv layer (第三卷積層過濾器數量) - 提取高級特徵的能力，增加可改善複雜模式識別
-CONV3_KERNEL_SIZE = 3  # Kernel size for third conv layer (第三卷積層核大小) - 較小的核專注於精細特徵整合
-CONV3_STRIDE = 1  # Stride for third conv layer (第三卷積層步幅) - 保持為1通常可在最後卷積層保留更完整的空間信息
+CONV3_CHANNELS = 64  # Number of filters in third conv layer (第三卷積層過濾器數量) - High-level feature extraction capability, increasing can improve complex pattern recognition
+CONV3_KERNEL_SIZE = 3  # Kernel size for third conv layer (第三卷積層核大小) - Smaller kernels focus on fine feature integration
+CONV3_STRIDE = 1  # Stride for third conv layer (第三卷積層步幅) - Keeping at 1 typically preserves more complete spatial information in the final convolutional layer
 
 # Fully connected layer and gradient settings
 # 全連接層和梯度設置
-FC_SIZE = 512  # Size of fully connected layer (全連接層大小) - 增加提高模型表示能力但增加參數量，減少可降低過擬合風險但可能降低表達能力
-GRAD_CLIP_NORM = 5.0  # Gradient clipping norm (梯度裁剪范數) - 防止梯度爆炸，增加允許更大的更新步長但可能導致不穩定，減少提高穩定性但可能減緩學習
+FC_SIZE = 512  # Size of fully connected layer (全連接層大小) - Increasing improves model representation capability but increases parameter count, decreasing can reduce overfitting risk but may lower expressiveness
+GRAD_CLIP_NORM = 5.0  # Gradient clipping norm (梯度裁剪范數) - Prevents gradient explosion, increasing allows larger update steps but may cause instability, decreasing improves stability but may slow learning
 
 # Evaluation settings
 # 評估設置
-EVAL_EPISODES = 100  # Number of episodes for each evaluation (每次評估的回合數) - 增加可提供更可靠的評估結果但延長評估時間
-EVAL_FREQUENCY = 100  # Episodes between evaluations (評估間隔的回合數) - 減少可更頻繁評估訓練進度但延長總訓練時間，增加可加速訓練但降低進度監控頻率
+EVAL_EPISODES = 100  # Number of episodes for each evaluation (每次評估的回合數) - Increasing can provide more reliable evaluation results but extends evaluation time
+EVAL_FREQUENCY = 100  # Episodes between evaluations (評估間隔的回合數) - Decreasing can evaluate training progress more frequently but extends total training time, increasing can accelerate training but reduces progress monitoring frequency
 
 ###############################
 # LOGGER SETTINGS
@@ -130,7 +131,7 @@ EVAL_FREQUENCY = 100  # Episodes between evaluations (評估間隔的回合數) 
 
 # System resource management
 # 系統資源管理
-MEMORY_THRESHOLD_PERCENT = 90  # Memory usage threshold percentage (內存使用閾值百分比) - 降低可更保守地控制記憶體使用但可能限制性能，增加允許使用更多記憶體但風險更高
+MEMORY_THRESHOLD_PERCENT = 90  # Memory usage threshold percentage (內存使用閾值百分比) - Decreasing can control memory usage more conservatively but may limit performance, increasing allows more memory usage but higher risk
 
 # Directory configurations
 # 目錄配置
@@ -142,12 +143,177 @@ DATA_DIR = os.path.join(RESULTS_DIR, "data")  # Directory for data storage (數�
 
 # Logger settings
 # 日誌記錄器設置
-ENABLE_FILE_LOGGING = False  # Whether to write logs to files (是否將日誌寫入文件) - 啟用可保存完整訓練記錄但增加I/O操作，禁用可減輕系統負擔但丟失歷史記錄
-LOGGER_SAVE_INTERVAL = 100  # Episodes between logger saves (日誌保存間隔的回合數) - 減少可更頻繁保存進度但增加I/O操作，增加可減輕I/O負擔但風險更高
-LOGGER_MEMORY_WINDOW = 1000  # Maximum records kept in memory (内存中保留的最大記錄數) - 增加可存儲更長的歷史記錄但增加記憶體使用，減少可節省記憶體但限制可存取的歷史數據
-LOGGER_BATCH_SIZE = 50  # Records to accumulate before writing (累積多少記錄後寫入磁盤) - 增加可減少I/O頻率但延遲數據持久化，減少可更快保存記錄但增加I/O頻率
-LOGGER_DETAILED_INTERVAL = 50  # Episodes between detailed reports (詳細報告間隔的回合數) - 減少提供更頻繁的詳細進度報告但增加輸出量，增加可減少輸出量但降低監控粒度
-LOGGER_MAJOR_METRICS = ["reward", "loss", "epsilon", "beta"]  # Main metrics to plot (主要繪圖指標) - 自定義要在概覽圖中顯示的主要指標
-VISUALIZATION_SAVE_INTERVAL = 1000  # Episodes between visualization saves (可視化保存間隔的回合數) - 減少可更頻繁生成可視化但增加I/O和計算負擔，增加可減輕負擔但減少視覺反饋
+ENABLE_FILE_LOGGING = False  # Whether to write logs to files (是否將日誌寫入文件) - Enabling can save complete training records but increases I/O operations, disabling can reduce system burden but loses historical records
+LOGGER_SAVE_INTERVAL = 100  # Episodes between logger saves (日誌保存間隔的回合數) - Decreasing can save progress more frequently but increases I/O operations, increasing can reduce I/O burden but higher risk
+LOGGER_MEMORY_WINDOW = 1000  # Maximum records kept in memory (内存中保留的最大記錄數) - Increasing can store longer historical records but increases memory usage, decreasing can save memory but limits accessible historical data
+LOGGER_BATCH_SIZE = 50  # Records to accumulate before writing (累積多少記錄後寫入磁盤) - Increasing can reduce I/O frequency but delays data persistence, decreasing can save records faster but increases I/O frequency
+LOGGER_DETAILED_INTERVAL = 50  # Episodes between detailed reports (詳細報告間隔的回合數) - Decreasing provides more frequent detailed progress reports but increases output volume, increasing can reduce output volume but lowers monitoring granularity
+LOGGER_MAJOR_METRICS = ["reward", "loss", "epsilon", "beta"]  # Main metrics to plot (主要繪圖指標) - Customize main metrics to display in overview plots
+VISUALIZATION_SAVE_INTERVAL = 1000  # Episodes between visualization saves (可視化保存間隔的回合數) - Decreasing can generate visualizations more frequently but increases I/O and computational burden, increasing can reduce burden but decreases visual feedback
 
-VISUALIZATION_SPECIFIC_EXPERIMENT = '20250430_014335' # Specific training run for visualization (可視化的特定訓練運行) - 用於指定要可視化的特定訓練運行，通常用於比較不同運行的結果
+VISUALIZATION_SPECIFIC_EXPERIMENT = '20250430_014335' # Specific training run for visualization (可視化的特定訓練運行) - Used to specify specific training run for visualization, typically for comparing results from different runs
+
+###############################
+# CONFIGURATION VALIDATION
+# 配置驗證
+###############################
+
+def validate_config():
+    """
+    Validate configuration parameters for consistency and sanity.
+    
+    驗證配置參數的一致性和合理性。
+    
+    Returns:
+        list: List of validation errors, empty if all valid
+    """
+    errors = []
+    warnings_list = []
+    
+    # Environment validation
+    if not isinstance(ENV_NAME, str) or not ENV_NAME.strip():
+        errors.append("ENV_NAME must be a non-empty string")
+    
+    if ACTION_SPACE_SIZE <= 0:
+        errors.append("ACTION_SPACE_SIZE must be positive")
+    
+    if DIFFICULTY < 0 or DIFFICULTY > 4:
+        errors.append("DIFFICULTY must be between 0 and 4")
+    
+    # Frame processing validation
+    if FRAME_WIDTH <= 0 or FRAME_HEIGHT <= 0:
+        errors.append("FRAME_WIDTH and FRAME_HEIGHT must be positive")
+    
+    if FRAME_STACK <= 0:
+        errors.append("FRAME_STACK must be positive")
+    
+    if FRAME_SKIP <= 0:
+        errors.append("FRAME_SKIP must be positive")
+    
+    # DQN parameters validation
+    if LEARNING_RATE <= 0 or LEARNING_RATE > 1:
+        errors.append("LEARNING_RATE must be between 0 and 1")
+    
+    if GAMMA < 0 or GAMMA > 1:
+        errors.append("GAMMA must be between 0 and 1")
+    
+    if BATCH_SIZE <= 0:
+        errors.append("BATCH_SIZE must be positive")
+    
+    if MEMORY_CAPACITY <= BATCH_SIZE:
+        errors.append("MEMORY_CAPACITY must be larger than BATCH_SIZE")
+    
+    if TARGET_UPDATE_FREQUENCY <= 0:
+        errors.append("TARGET_UPDATE_FREQUENCY must be positive")
+    
+    if TRAINING_EPISODES <= 0:
+        errors.append("TRAINING_EPISODES must be positive")
+    
+    # Exploration parameters validation
+    if EPSILON_START < 0 or EPSILON_START > 1:
+        errors.append("EPSILON_START must be between 0 and 1")
+    
+    if EPSILON_END < 0 or EPSILON_END > 1:
+        errors.append("EPSILON_END must be between 0 and 1")
+    
+    if EPSILON_END >= EPSILON_START:
+        warnings_list.append("EPSILON_END should be less than EPSILON_START for decay")
+    
+    if EPSILON_DECAY <= 0:
+        errors.append("EPSILON_DECAY must be positive")
+    
+    if LEARNING_STARTS < 0:
+        errors.append("LEARNING_STARTS must be non-negative")
+    
+    if UPDATE_FREQUENCY <= 0:
+        errors.append("UPDATE_FREQUENCY must be positive")
+    
+    # PER parameters validation
+    if USE_PER:
+        if ALPHA < 0:
+            errors.append("ALPHA must be non-negative")
+        
+        if BETA_START < 0 or BETA_START > 1:
+            errors.append("BETA_START must be between 0 and 1")
+        
+        if BETA_FRAMES <= 0:
+            errors.append("BETA_FRAMES must be positive")
+        
+        if EPSILON_PER <= 0:
+            errors.append("EPSILON_PER must be positive")
+        
+        if TREE_CAPACITY != MEMORY_CAPACITY:
+            warnings_list.append("TREE_CAPACITY should equal MEMORY_CAPACITY")
+    
+    # Neural network validation
+    conv_layers = sum([USE_ONE_CONV_LAYER, USE_TWO_CONV_LAYERS, USE_THREE_CONV_LAYERS])
+    if conv_layers != 1:
+        errors.append("Exactly one of USE_ONE_CONV_LAYER, USE_TWO_CONV_LAYERS, USE_THREE_CONV_LAYERS must be True")
+    
+    if FC_SIZE <= 0:
+        errors.append("FC_SIZE must be positive")
+    
+    if GRAD_CLIP_NORM <= 0:
+        errors.append("GRAD_CLIP_NORM must be positive")
+    
+    # Evaluation settings validation
+    if EVAL_EPISODES <= 0:
+        errors.append("EVAL_EPISODES must be positive")
+    
+    if EVAL_FREQUENCY <= 0:
+        errors.append("EVAL_FREQUENCY must be positive")
+    
+    # Logger settings validation
+    if MEMORY_THRESHOLD_PERCENT < 50 or MEMORY_THRESHOLD_PERCENT > 100:
+        warnings_list.append("MEMORY_THRESHOLD_PERCENT should be between 50-100")
+    
+    # Print warnings
+    if warnings_list:
+        print("Configuration warnings:")
+        for warning in warnings_list:
+            print(f"  WARNING: {warning}")
+    
+    return errors
+
+def get_config_summary():
+    """
+    Get a summary of key configuration parameters.
+    
+    獲取關鍵配置參數的摘要。
+    
+    Returns:
+        dict: Summary of configuration
+    """
+    return {
+        'environment': {
+            'name': ENV_NAME,
+            'action_space': ACTION_SPACE_SIZE,
+            'frame_size': f"{FRAME_WIDTH}x{FRAME_HEIGHT}",
+            'frame_stack': FRAME_STACK,
+            'difficulty': DIFFICULTY
+        },
+        'training': {
+            'episodes': TRAINING_EPISODES,
+            'learning_rate': LEARNING_RATE,
+            'batch_size': BATCH_SIZE,
+            'memory_capacity': MEMORY_CAPACITY,
+            'gamma': GAMMA
+        },
+        'exploration': {
+            'epsilon_start': EPSILON_START,
+            'epsilon_end': EPSILON_END,
+            'epsilon_decay': EPSILON_DECAY
+        },
+        'per': {
+            'enabled': USE_PER,
+            'alpha': ALPHA if USE_PER else None,
+            'beta_start': BETA_START if USE_PER else None,
+            'beta_frames': BETA_FRAMES if USE_PER else None
+        }
+    }
+
+# Validate configuration on import
+_validation_errors = validate_config()
+if _validation_errors:
+    error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in _validation_errors)
+    raise ValueError(error_msg)

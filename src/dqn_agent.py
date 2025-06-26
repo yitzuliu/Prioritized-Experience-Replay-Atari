@@ -420,7 +420,7 @@ class DQNAgent:
     
     def save_model(self, path, save_optimizer=True, include_memory=False, metadata=None):
         """
-        Save the model weights and state to a file.
+        Enhanced model saving with verification and comprehensive metadata.
         
         Args:
             path: Path to save the model
@@ -428,90 +428,221 @@ class DQNAgent:
             include_memory: Whether to include replay memory in the save (can be large)
             metadata: Additional metadata to include in the save
             
-        保存模型權重到文件。
-        
-        參數:
-            path: 保存模型的路徑
-            save_optimizer: 是否保存優化器狀態
-            include_memory: 是否包含回放記憶體（可能很大）
-            metadata: 要包含在保存中的額外元數據
+        保存模型權重到文件（增強版本）。
         """
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        
-        # Prepare model state
-        model_state = {
-            'policy_network': self.policy_network.state_dict(),
-            'target_network': self.target_network.state_dict(),
-            'steps_done': self.steps_done,
-            'training_steps': self.training_steps,
-            'epsilon': self._epsilon,
-            'timestamp': datetime.datetime.now().isoformat(),
-        }
-        
-        # Add optimizer state if requested
-        if save_optimizer:
-            model_state['optimizer'] = self.optimizer.state_dict()
-        
-        # Add memory if requested (warning: can be very large)
-        if include_memory and self.use_per:
-            # For PER, save prioritized replay buffer state
-            memory_state = self.memory.get_state_dict()
-            model_state['memory'] = memory_state
-        
-        # Add custom metadata if provided
-        if metadata:
-            model_state['metadata'] = metadata
-        
-        # Add performance metrics
-        if hasattr(self, 'loss_history') and self.loss_history:
-            model_state['metrics'] = {
-                'loss_history': self.loss_history,
-                'reward_history': self.reward_history if hasattr(self, 'reward_history') else [],
-                'epsilon_history': self.epsilon_history if hasattr(self, 'epsilon_history') else [],
+        try:
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            
+            # Prepare comprehensive model state
+            model_state = {
+                'policy_network': self.policy_network.state_dict(),
+                'target_network': self.target_network.state_dict(),
+                'steps_done': self.steps_done,
+                'training_steps': self.training_steps,
+                'epsilon': self._epsilon,
+                'timestamp': datetime.datetime.now().isoformat(),
+                'model_config': {
+                    'state_shape': self.state_shape,
+                    'action_space_size': self.action_space_size,
+                    'learning_rate': self.optimizer.param_groups[0]['lr'],
+                    'gamma': self.gamma,
+                    'batch_size': self.batch_size,
+                    'use_per': self.use_per
+                },
+                'device': str(self.device),
+                'pytorch_version': torch.__version__
             }
-        
-        # Save to file
-        torch.save(model_state, path)
-        print(f"Model saved to {path}")
-        return True
+            
+            # Add optimizer state if requested
+            if save_optimizer:
+                model_state['optimizer'] = self.optimizer.state_dict()
+            
+            # Add memory state if requested and using PER
+            if include_memory and self.use_per and hasattr(self.memory, 'get_performance_stats'):
+                try:
+                    memory_stats = self.memory.get_performance_stats()
+                    model_state['memory_stats'] = memory_stats
+                    print(f"Including memory statistics in save: {memory_stats['samples_drawn']} samples drawn")
+                except Exception as e:
+                    print(f"Warning: Could not save memory stats: {str(e)}")
+            
+            # Add custom metadata if provided
+            if metadata:
+                model_state['metadata'] = metadata
+            
+            # Add performance metrics if available
+            if hasattr(self, 'loss_history') and self.loss_history:
+                model_state['metrics'] = {
+                    'loss_history': self.loss_history[-100:],  # Keep last 100 entries
+                    'reward_history': getattr(self, 'reward_history', [])[-100:],
+                    'epsilon_history': getattr(self, 'epsilon_history', [])[-100:],
+                }
+            
+            # Save to temporary file first, then move to final location
+            temp_path = path + '.tmp'
+            torch.save(model_state, temp_path)
+            
+            # Verify the saved file can be loaded
+            try:
+                verification_state = torch.load(temp_path, map_location='cpu')
+                required_keys = ['policy_network', 'target_network', 'steps_done', 'training_steps']
+                for key in required_keys:
+                    if key not in verification_state:
+                        raise ValueError(f"Missing required key: {key}")
+                
+                # Move temporary file to final location
+                os.rename(temp_path, path)
+                print(f"Model successfully saved and verified: {path}")
+                return True
+                
+            except Exception as e:
+                # Clean up temporary file
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                raise ValueError(f"Model verification failed: {str(e)}")
+                
+        except Exception as e:
+            print(f"Error saving model: {str(e)}")
+            return False
     
-    def load_model(self, path):
+    def load_model(self, path, strict=True, device_override=None):
         """
-        Load the model weights and state from a file.
+        Enhanced model loading with validation and device handling.
         
         Args:
             path: Path to the saved model
+            strict: Whether to strictly enforce state dict loading
+            device_override: Override device selection
             
         Returns:
-            bool: True if the model was loaded successfully, False otherwise
+            dict: Loaded model metadata and status
             
-        加載模型權重和狀態。
-        
-        參數:
-            path: 保存的模型路徑
+        加載模型權重和狀態（增強版本）。
         """
         if not os.path.exists(path):
-            print(f"Model file {path} not found.")
-            return False
+            error_msg = f"Model file {path} not found."
+            print(error_msg)
+            return {'success': False, 'error': error_msg}
         
         try:
+            # Determine device for loading
+            load_device = device_override if device_override else self.device
+            
             # Load model state
-            model_state = torch.load(path, map_location=self.device)
+            print(f"Loading model from {path} to device {load_device}")
+            model_state = torch.load(path, map_location=load_device)
             
-            # Load model parameters
-            self.policy_network.load_state_dict(model_state['policy_network'])
-            self.target_network.load_state_dict(model_state['target_network'])
-            self.optimizer.load_state_dict(model_state['optimizer'])
-            self.steps_done = model_state['steps_done']
-            self.training_steps = model_state['training_steps']
-            self._epsilon = model_state['epsilon']
+            # Validate required keys
+            required_keys = ['policy_network', 'target_network']
+            missing_keys = [key for key in required_keys if key not in model_state]
+            if missing_keys:
+                error_msg = f"Missing required keys in model file: {missing_keys}"
+                print(error_msg)
+                return {'success': False, 'error': error_msg}
             
-            print(f"Model loaded from {path}")
-            return True
+            # Load network states
+            try:
+                self.policy_network.load_state_dict(model_state['policy_network'], strict=strict)
+                self.target_network.load_state_dict(model_state['target_network'], strict=strict)
+                print("Network states loaded successfully")
+            except Exception as e:
+                error_msg = f"Error loading network states: {str(e)}"
+                print(error_msg)
+                return {'success': False, 'error': error_msg}
+            
+            # Load training state
+            if 'steps_done' in model_state:
+                self.steps_done = model_state['steps_done']
+            if 'training_steps' in model_state:
+                self.training_steps = model_state['training_steps']
+            if 'epsilon' in model_state:
+                self._epsilon = model_state['epsilon']
+            
+            # Load optimizer state if available
+            if 'optimizer' in model_state:
+                try:
+                    self.optimizer.load_state_dict(model_state['optimizer'])
+                    print("Optimizer state loaded successfully")
+                except Exception as e:
+                    print(f"Warning: Could not load optimizer state: {str(e)}")
+            
+            # Load performance metrics if available
+            if 'metrics' in model_state:
+                metrics = model_state['metrics']
+                self.loss_history = metrics.get('loss_history', [])
+                self.reward_history = metrics.get('reward_history', [])
+                self.epsilon_history = metrics.get('epsilon_history', [])
+                print(f"Loaded {len(self.loss_history)} loss history entries")
+            
+            # Prepare return metadata
+            load_info = {
+                'success': True,
+                'timestamp': model_state.get('timestamp', 'Unknown'),
+                'steps_done': self.steps_done,
+                'training_steps': self.training_steps,
+                'epsilon': self._epsilon,
+                'device': str(load_device),
+                'model_config': model_state.get('model_config', {}),
+            }
+            
+            # Add memory statistics if available
+            if 'memory_stats' in model_state:
+                load_info['memory_stats'] = model_state['memory_stats']
+            
+            print(f"Model loaded successfully. Steps: {self.steps_done}, Training steps: {self.training_steps}")
+            return load_info
+            
         except Exception as e:
-            print(f"Error loading model: {str(e)}")
-            return False
+            error_msg = f"Error loading model: {str(e)}"
+            print(error_msg)
+            return {'success': False, 'error': error_msg}
+    
+    def get_training_diagnostics(self):
+        """
+        Get comprehensive training diagnostics for monitoring and debugging.
+        
+        獲取用於監控和調試的綜合訓練診斷信息。
+        
+        Returns:
+            dict: Training diagnostics
+        """
+        diagnostics = {
+            'training_progress': {
+                'steps_done': self.steps_done,
+                'training_steps': self.training_steps,
+                'epsilon': self._epsilon,
+                'learning_phase': 'learning' if self.steps_done >= self.learning_starts else 'warmup'
+            },
+            'network_info': {
+                'device': str(self.device),
+                'policy_network_params': sum(p.numel() for p in self.policy_network.parameters()),
+                'target_network_params': sum(p.numel() for p in self.target_network.parameters()),
+                'trainable_params': sum(p.numel() for p in self.policy_network.parameters() if p.requires_grad)
+            },
+            'memory_info': {
+                'use_per': self.use_per,
+                'memory_size': len(self.memory) if hasattr(self.memory, '__len__') else 'Unknown'
+            }
+        }
+        
+        # Add PER-specific diagnostics
+        if self.use_per and hasattr(self.memory, 'get_performance_stats'):
+            try:
+                per_stats = self.memory.get_performance_stats()
+                diagnostics['per_info'] = per_stats
+            except Exception as e:
+                diagnostics['per_info'] = {'error': str(e)}
+        
+        # Add recent performance metrics
+        if hasattr(self, 'loss_history') and self.loss_history:
+            recent_losses = [loss for _, loss in self.loss_history[-10:]]
+            diagnostics['recent_performance'] = {
+                'avg_loss_last_10': np.mean(recent_losses) if recent_losses else 0,
+                'loss_history_length': len(self.loss_history)
+            }
+        
+        return diagnostics
 
 
 # For testing purposes

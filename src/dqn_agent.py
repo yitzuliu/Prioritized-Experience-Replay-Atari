@@ -15,6 +15,7 @@ import torch
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+import copy
 import os
 import sys
 import random
@@ -485,7 +486,7 @@ class DQNAgent:
             
             # Verify the saved file can be loaded
             try:
-                verification_state = torch.load(temp_path, map_location='cpu')
+                verification_state = torch.load(temp_path, map_location='cpu', weights_only=False)
                 required_keys = ['policy_network', 'target_network', 'steps_done', 'training_steps']
                 for key in required_keys:
                     if key not in verification_state:
@@ -531,7 +532,7 @@ class DQNAgent:
             
             # Load model state
             print(f"Loading model from {path} to device {load_device}")
-            model_state = torch.load(path, map_location=load_device)
+            model_state = torch.load(path, map_location=load_device, weights_only=False)
             
             # Validate required keys
             required_keys = ['policy_network', 'target_network']
@@ -540,13 +541,40 @@ class DQNAgent:
                 error_msg = f"Missing required keys in model file: {missing_keys}"
                 print(error_msg)
                 return {'success': False, 'error': error_msg}
+
+            # Validate model state shape compatibility before applying any update.
+            policy_state = model_state['policy_network']
+            target_state = model_state['target_network']
+
+            def _validate_state_shapes(network, state_dict, network_name):
+                current_state = network.state_dict()
+                for key, tensor in current_state.items():
+                    if key not in state_dict:
+                        raise ValueError(f"Missing parameter '{network_name}.{key}' in checkpoint")
+                    if tensor.shape != state_dict[key].shape:
+                        raise ValueError(
+                            f"Shape mismatch for {network_name}.{key}: "
+                            f"expected {tuple(tensor.shape)}, got {tuple(state_dict[key].shape)}"
+                        )
+
+            _validate_state_shapes(self.policy_network, policy_state, 'policy_network')
+            _validate_state_shapes(self.target_network, target_state, 'target_network')
             
             # Load network states
             try:
-                self.policy_network.load_state_dict(model_state['policy_network'], strict=strict)
-                self.target_network.load_state_dict(model_state['target_network'], strict=strict)
+                backup_policy_state = copy.deepcopy(self.policy_network.state_dict())
+                backup_target_state = copy.deepcopy(self.target_network.state_dict())
+
+                self.policy_network.load_state_dict(policy_state, strict=strict)
+                self.target_network.load_state_dict(target_state, strict=strict)
                 print("Network states loaded successfully")
             except Exception as e:
+                # Roll back to the previous in-memory state on any failure.
+                try:
+                    self.policy_network.load_state_dict(backup_policy_state, strict=True)
+                    self.target_network.load_state_dict(backup_target_state, strict=True)
+                except Exception:
+                    pass
                 error_msg = f"Error loading network states: {str(e)}"
                 print(error_msg)
                 return {'success': False, 'error': error_msg}

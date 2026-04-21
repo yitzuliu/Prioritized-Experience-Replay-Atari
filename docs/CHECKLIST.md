@@ -27,10 +27,11 @@ Execution rule:
    - Result: passed syntax smoke test after signature/wrapper updates (`py_compile`).
    - GitHub gate: commit + push after test passes.
 
-- [ ] 4) Harden checkpoint loading safety and atomicity
+- [x] 4) Harden checkpoint loading safety and atomicity
    - Files: src/dqn_agent.py
    - Goal: validate before load, avoid partial state updates on failure.
    - Quick test: corrupted checkpoint should fail safely; valid checkpoint should load.
+   - Result: passed both tests (valid checkpoint load succeeds; corrupted checkpoint rejected safely).
    - GitHub gate: commit + push after test passes.
 
 - [ ] 5) Reuse evaluation environment for efficiency

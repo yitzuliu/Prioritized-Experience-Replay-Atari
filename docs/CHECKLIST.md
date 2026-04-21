@@ -1,5 +1,49 @@
 # Prioritized Experience Replay DQN for Atari Games - Implementation Plan
 
+## 2026-04 Reliability Fix Execution Checklist
+
+Execution rule:
+- Each checkbox must follow: code change -> quick test -> commit -> push.
+- Only move to the next checkbox after the current test passes.
+
+- [x] 1) Remove duplicate target-network synchronization
+   - Files: train.py, src/dqn_agent.py
+   - Goal: Keep exactly one target update path.
+   - Quick test: run a short training smoke run and verify no duplicate sync behavior.
+   - Result: passed syntax smoke test via `python -m py_compile train.py src/dqn_agent.py`.
+   - GitHub gate: commit + push after test passes.
+
+- [ ] 2) Implement complete resume behavior
+   - Files: train.py, src/dqn_agent.py, src/logger.py
+   - Goal: restore episode/global-step/epsilon/training_steps and correct resume messaging.
+   - Quick test: save checkpoint, resume for 1 episode, verify restored fields.
+   - GitHub gate: commit + push after test passes.
+
+- [ ] 3) Align evaluation environment protocol
+   - Files: train.py, src/env_wrappers.py
+   - Goal: evaluation uses current training env_name and correct eval wrappers.
+   - Quick test: train/eval observation compatibility + 1-2 eval episodes smoke test.
+   - GitHub gate: commit + push after test passes.
+
+- [ ] 4) Harden checkpoint loading safety and atomicity
+   - Files: src/dqn_agent.py
+   - Goal: validate before load, avoid partial state updates on failure.
+   - Quick test: corrupted checkpoint should fail safely; valid checkpoint should load.
+   - GitHub gate: commit + push after test passes.
+
+- [ ] 5) Reuse evaluation environment for efficiency
+   - Files: train.py
+   - Goal: avoid re-creating eval env at every evaluation cycle.
+   - Quick test: repeated evaluations with same env instance and proper cleanup.
+   - GitHub gate: commit + push after test passes.
+
+- [ ] 6) Add algorithmic regression tests
+   - Files: test_improvements.py
+   - Goal: add TD error, PER priority update, target sync, and resume-state tests.
+   - Quick test: run added tests and full test_improvements.py.
+   - GitHub gate: commit + push after test passes.
+
+
 This document outlines the detailed plan for implementing a DQN with Prioritized Experience Replay (PER) for playing Atari games.
 
 *此文件記錄實現帶有優先經驗回放 (PER) 的 DQN 來玩 Atari 遊戲的詳細計劃。*

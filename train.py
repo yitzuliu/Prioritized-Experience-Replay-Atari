@@ -725,9 +725,7 @@ def train_one_episode(env, agent, logger, episode_num, total_steps):
         if total_steps % 1000 == 0:
             logger.log_epsilon(total_steps, agent.epsilon)
         
-        # Update target network (at specified frequency)
-        if total_steps % config.TARGET_UPDATE_FREQUENCY == 0:
-            agent.target_network.load_state_dict(agent.policy_network.state_dict())
+        # Target-network synchronization is handled inside agent.optimize_model().
     
     # Update beta value at the end of episode for logging
     if hasattr(agent, 'memory') and hasattr(agent.memory, 'beta'):

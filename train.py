@@ -445,6 +445,7 @@ def main():
         start_time = time.time()
         last_performance_report = 0
         emergency_saves = 0
+        eval_env = None
         
         # Initialize hyperparameter tuner if enabled
         hyperparameter_tuner = None
@@ -509,9 +510,15 @@ def main():
                 # Enhanced periodic evaluation
                 if episode % config.EVAL_FREQUENCY == 0:
                     try:
+                        if eval_env is None:
+                            eval_env = make_atari_env(
+                                env_name=args.env_name,
+                                training=False,
+                                difficulty=args.difficulty
+                            )
+
                         eval_reward = evaluate_agent(
-                            env_name=args.env_name,
-                            difficulty=args.difficulty,
+                            eval_env=eval_env,
                             agent=agent,
                             logger=logger,
                             episode_num=episode
@@ -715,6 +722,13 @@ def main():
                 print("✅ Environment closed")
             except Exception as e:
                 print(f"⚠️ Error closing environment: {str(e)}")
+
+        if 'eval_env' in locals() and eval_env is not None:
+            try:
+                eval_env.close()
+                print("✅ Evaluation environment closed")
+            except Exception as e:
+                print(f"⚠️ Error closing evaluation environment: {str(e)}")
         
         if logger is not None:
             try:
@@ -800,16 +814,13 @@ def train_one_episode(env, agent, logger, episode_num, total_steps):
         'beta': beta
     }, step_count
 
-def evaluate_agent(env_name, difficulty, agent, logger, episode_num, num_episodes=config.EVAL_EPISODES):
+def evaluate_agent(eval_env, agent, logger, episode_num, num_episodes=config.EVAL_EPISODES):
     """
     Evaluate agent performance with enhanced error handling.
     """
     logger.log_text(f"🧪 Starting evaluation (training episode {episode_num})")
     
     try:
-        # Create evaluation environment
-        eval_env = make_atari_env(env_name=env_name, training=False, difficulty=difficulty)
-        
         # Temporarily switch to evaluation mode
         agent.set_evaluation_mode(True)
         
@@ -840,9 +851,6 @@ def evaluate_agent(env_name, difficulty, agent, logger, episode_num, num_episode
             f"Mean reward = {mean_reward:.2f} ± {std_reward:.2f}, "
             f"Min/Max = {np.min(eval_rewards):.2f}/{np.max(eval_rewards):.2f}"
         )
-        
-        # Close evaluation environment
-        eval_env.close()
         
         return mean_reward
         

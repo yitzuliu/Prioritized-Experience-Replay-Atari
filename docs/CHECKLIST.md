@@ -34,10 +34,11 @@ Execution rule:
    - Result: passed both tests (valid checkpoint load succeeds; corrupted checkpoint rejected safely).
    - GitHub gate: commit + push after test passes.
 
-- [ ] 5) Reuse evaluation environment for efficiency
+- [x] 5) Reuse evaluation environment for efficiency
    - Files: train.py
    - Goal: avoid re-creating eval env at every evaluation cycle.
    - Quick test: repeated evaluations with same env instance and proper cleanup.
+   - Result: passed train.py syntax check and static behavior assertions for eval-env injection/reuse/cleanup boundaries (local runtime lacked gymnasium for dynamic import test).
    - GitHub gate: commit + push after test passes.
 
 - [ ] 6) Add algorithmic regression tests

@@ -15,6 +15,7 @@ import os
 import time
 import traceback
 import numpy as np
+import tempfile
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -256,6 +257,153 @@ def test_resource_monitoring():
         print(f"❌ Resource monitoring test failed: {str(e)}")
         return False
 
+def test_td_error_calculation():
+    """Test TD-error calculation returns valid finite scalar values."""
+    print("\n🧪 Testing TD-Error Calculation...")
+
+    try:
+        from src.dqn_agent import DQNAgent
+
+        agent = DQNAgent(
+            state_shape=(4, 84, 84),
+            action_space_size=9,
+            learning_rate=0.0001,
+            use_per=True
+        )
+
+        state = np.random.rand(4, 84, 84).astype(np.float32)
+        next_state = np.random.rand(4, 84, 84).astype(np.float32)
+        td_error = agent._calculate_td_error(
+            state=state,
+            action=0,
+            reward=1.0,
+            next_state=next_state,
+            done=False
+        )
+
+        assert isinstance(td_error, float), f"TD error should be float, got {type(td_error)}"
+        assert np.isfinite(td_error), "TD error should be finite"
+        print("✅ TD-error calculation working")
+        return True
+
+    except Exception as e:
+        print(f"❌ TD-error calculation test failed: {str(e)}")
+        return False
+
+def test_priority_updates_formula_behavior():
+    """Test PER priority updates are monotonic with increasing TD errors."""
+    print("\n🧪 Testing PER Priority Update Behavior...")
+
+    try:
+        from src.per_memory import PERMemory
+
+        memory = PERMemory(memory_capacity=32)
+
+        # Add transitions so we can sample and update priorities.
+        for _ in range(16):
+            state = np.random.rand(4, 84, 84).astype(np.float32)
+            memory.add(state, 0, 1.0, state, False)
+
+        indices, _, _ = memory.sample(8)
+        td_errors = np.linspace(0.1, 1.0, num=8)
+        memory.update_priorities(indices, td_errors)
+
+        # Map updated indices to leaf priorities and verify monotonic ordering.
+        updated_priorities = [memory.sumtree.priority_tree[int(idx)] for idx in indices]
+        ordered_pairs = sorted(zip(td_errors, updated_priorities), key=lambda x: x[0])
+
+        for i in range(1, len(ordered_pairs)):
+            assert ordered_pairs[i][1] >= ordered_pairs[i - 1][1], (
+                "Priority should be monotonic with TD-error"
+            )
+
+        print("✅ PER priority update behavior working")
+        return True
+
+    except Exception as e:
+        print(f"❌ PER priority update behavior test failed: {str(e)}")
+        return False
+
+def test_target_network_sync():
+    """Test target network sync copies policy network parameters correctly."""
+    print("\n🧪 Testing Target Network Synchronization...")
+
+    try:
+        import torch
+        from src.dqn_agent import DQNAgent
+
+        agent = DQNAgent(
+            state_shape=(4, 84, 84),
+            action_space_size=9,
+            learning_rate=0.0001,
+            use_per=True
+        )
+
+        # Perturb policy network to ensure mismatch before sync.
+        with torch.no_grad():
+            for param in agent.policy_network.parameters():
+                param.add_(0.01)
+
+        pre_sync_delta = 0.0
+        for p, t in zip(agent.policy_network.parameters(), agent.target_network.parameters()):
+            pre_sync_delta += (p - t).abs().sum().item()
+        assert pre_sync_delta > 0.0, "Networks should differ before sync"
+
+        agent.target_network.load_state_dict(agent.policy_network.state_dict())
+
+        post_sync_delta = 0.0
+        for p, t in zip(agent.policy_network.parameters(), agent.target_network.parameters()):
+            post_sync_delta += (p - t).abs().sum().item()
+        assert post_sync_delta == 0.0, "Networks should match after sync"
+
+        print("✅ Target network synchronization working")
+        return True
+
+    except Exception as e:
+        print(f"❌ Target network synchronization test failed: {str(e)}")
+        return False
+
+def test_resume_state_consistency():
+    """Test checkpoint save/load preserves core resume state fields."""
+    print("\n🧪 Testing Resume State Consistency...")
+
+    try:
+        from src.dqn_agent import DQNAgent
+
+        agent = DQNAgent(
+            state_shape=(4, 84, 84),
+            action_space_size=9,
+            learning_rate=0.0001,
+            use_per=True
+        )
+
+        agent.steps_done = 1234
+        agent.training_steps = 567
+        agent._epsilon = 0.123
+
+        with tempfile.NamedTemporaryFile(suffix='.pt', delete=False) as f:
+            checkpoint_path = f.name
+
+        try:
+            save_ok = agent.save_model(checkpoint_path, save_optimizer=True, metadata={'test': True})
+            assert save_ok, "Save should succeed"
+
+            load_result = agent.load_model(checkpoint_path)
+            assert load_result.get('success', False), f"Load failed: {load_result}"
+            assert agent.steps_done == 1234, f"Unexpected steps_done: {agent.steps_done}"
+            assert agent.training_steps == 567, f"Unexpected training_steps: {agent.training_steps}"
+            assert abs(agent.epsilon - 0.123) < 1e-9, f"Unexpected epsilon: {agent.epsilon}"
+        finally:
+            if os.path.exists(checkpoint_path):
+                os.unlink(checkpoint_path)
+
+        print("✅ Resume state consistency working")
+        return True
+
+    except Exception as e:
+        print(f"❌ Resume state consistency test failed: {str(e)}")
+        return False
+
 def main():
     """Run all tests for reliability and efficiency improvements."""
     print("🚀 Testing Reliability and Efficiency Improvements")
@@ -267,6 +415,10 @@ def main():
         ("Performance Monitoring", test_performance_monitoring),
         ("Enhanced DQN Agent", test_enhanced_agent),
         ("Resource Monitoring", test_resource_monitoring),
+        ("TD-Error Calculation", test_td_error_calculation),
+        ("PER Priority Update Behavior", test_priority_updates_formula_behavior),
+        ("Target Network Synchronization", test_target_network_sync),
+        ("Resume State Consistency", test_resume_state_consistency),
     ]
     
     results = {}

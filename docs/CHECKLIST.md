@@ -41,10 +41,11 @@ Execution rule:
    - Result: passed train.py syntax check and static behavior assertions for eval-env injection/reuse/cleanup boundaries (local runtime lacked gymnasium for dynamic import test).
    - GitHub gate: commit + push after test passes.
 
-- [ ] 6) Add algorithmic regression tests
+- [x] 6) Add algorithmic regression tests
    - Files: test_improvements.py
    - Goal: add TD error, PER priority update, target sync, and resume-state tests.
    - Quick test: run added tests and full test_improvements.py.
+   - Result: passed full suite `python test_improvements.py` (9/9 tests, 100.0%).
    - GitHub gate: commit + push after test passes.
 
 

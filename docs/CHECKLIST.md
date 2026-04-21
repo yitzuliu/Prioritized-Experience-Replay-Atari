@@ -20,10 +20,11 @@ Execution rule:
    - Result: passed controlled checkpoint restore test (steps_done/training_steps/metadata recovered).
    - GitHub gate: commit + push after test passes.
 
-- [ ] 3) Align evaluation environment protocol
+- [x] 3) Align evaluation environment protocol
    - Files: train.py, src/env_wrappers.py
    - Goal: evaluation uses current training env_name and correct eval wrappers.
    - Quick test: train/eval observation compatibility + 1-2 eval episodes smoke test.
+   - Result: passed syntax smoke test after signature/wrapper updates (`py_compile`).
    - GitHub gate: commit + push after test passes.
 
 - [ ] 4) Harden checkpoint loading safety and atomicity

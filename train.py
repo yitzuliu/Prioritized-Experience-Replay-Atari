@@ -509,7 +509,13 @@ def main():
                 # Enhanced periodic evaluation
                 if episode % config.EVAL_FREQUENCY == 0:
                     try:
-                        eval_reward = evaluate_agent(env, agent, logger, episode)
+                        eval_reward = evaluate_agent(
+                            env_name=args.env_name,
+                            difficulty=args.difficulty,
+                            agent=agent,
+                            logger=logger,
+                            episode_num=episode
+                        )
                         
                         if eval_reward > best_eval_reward:
                             best_eval_reward = eval_reward
@@ -794,7 +800,7 @@ def train_one_episode(env, agent, logger, episode_num, total_steps):
         'beta': beta
     }, step_count
 
-def evaluate_agent(env, agent, logger, episode_num, num_episodes=config.EVAL_EPISODES):
+def evaluate_agent(env_name, difficulty, agent, logger, episode_num, num_episodes=config.EVAL_EPISODES):
     """
     Evaluate agent performance with enhanced error handling.
     """
@@ -802,7 +808,7 @@ def evaluate_agent(env, agent, logger, episode_num, num_episodes=config.EVAL_EPI
     
     try:
         # Create evaluation environment
-        eval_env = make_atari_env(env_name=config.ENV_NAME, training=False)
+        eval_env = make_atari_env(env_name=env_name, training=False, difficulty=difficulty)
         
         # Temporarily switch to evaluation mode
         agent.set_evaluation_mode(True)

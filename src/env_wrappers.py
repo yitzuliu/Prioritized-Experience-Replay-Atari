@@ -63,7 +63,7 @@ def make_atari_env(env_name=config.ENV_NAME, render_mode=config.RENDER_MODE, tra
                             noop_max=config.NOOP_MAX,
                             frame_skip=config.FRAME_SKIP, 
                             screen_size=config.FRAME_WIDTH,
-                            terminal_on_life_loss=True,
+                            terminal_on_life_loss=training,
                             grayscale_obs=True,
                             grayscale_newaxis=True,
                             scale_obs=False)

@@ -584,6 +584,7 @@ class DQNAgent:
                 'epsilon': self._epsilon,
                 'device': str(load_device),
                 'model_config': model_state.get('model_config', {}),
+                'metadata': model_state.get('metadata', {}),
             }
             
             # Add memory statistics if available

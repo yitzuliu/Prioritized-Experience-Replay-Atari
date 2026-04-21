@@ -13,10 +13,11 @@ Execution rule:
    - Result: passed syntax smoke test via `python -m py_compile train.py src/dqn_agent.py`.
    - GitHub gate: commit + push after test passes.
 
-- [ ] 2) Implement complete resume behavior
+- [x] 2) Implement complete resume behavior
    - Files: train.py, src/dqn_agent.py, src/logger.py
    - Goal: restore episode/global-step/epsilon/training_steps and correct resume messaging.
    - Quick test: save checkpoint, resume for 1 episode, verify restored fields.
+   - Result: passed controlled checkpoint restore test (steps_done/training_steps/metadata recovered).
    - GitHub gate: commit + push after test passes.
 
 - [ ] 3) Align evaluation environment protocol

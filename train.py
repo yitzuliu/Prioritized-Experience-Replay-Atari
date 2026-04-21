@@ -297,20 +297,39 @@ def setup_enhanced_training_environment(args):
         except Exception as e:
             print(f"⚠️ Warning: Performance monitoring failed to start: {str(e)}")
     
+    # Resume context for continuing training from checkpoint
+    resume_context = {
+        'start_episode': 1,
+        'total_steps': 0,
+        'resumed': False
+    }
+
     # Resume from checkpoint if specified
     if args.resume_from:
         try:
             load_result = agent.load_model(args.resume_from)
             if load_result['success']:
+                resume_metadata = load_result.get('metadata', {}) or {}
+                checkpoint_episode = int(resume_metadata.get('checkpoint_episode', 0))
+                resume_context['start_episode'] = max(1, checkpoint_episode + 1)
+                resume_context['total_steps'] = int(load_result.get('steps_done', 0) or 0)
+                resume_context['resumed'] = True
+
                 print(f"🔄 Successfully resumed from checkpoint: {args.resume_from}")
-                print(f"   Resumed at episode: {load_result.get('steps_done', 'unknown')}")
+                print(f"   Restored steps_done: {load_result.get('steps_done', 'unknown')}")
+                print(f"   Restored training_steps: {load_result.get('training_steps', 'unknown')}")
+                print(f"   Continuing from episode: {resume_context['start_episode']}")
                 logger.log_text(f"Training resumed from checkpoint: {args.resume_from}")
+                logger.log_text(
+                    f"Resume context: start_episode={resume_context['start_episode']}, "
+                    f"total_steps={resume_context['total_steps']}"
+                )
             else:
                 print(f"⚠️ Failed to resume from checkpoint: {load_result.get('error', 'unknown error')}")
         except Exception as e:
             print(f"⚠️ Error loading checkpoint: {str(e)}")
     
-    return agent, logger, visualizer, performance_monitor, env
+    return agent, logger, visualizer, performance_monitor, env, resume_context
 
 def enhanced_resource_check(max_memory_percent=90.0):
     """
@@ -399,7 +418,7 @@ def main():
         
         # Setup enhanced training environment
         print("\n🔧 Setting up enhanced training environment...")
-        agent, logger, visualizer, performance_monitor, env = setup_enhanced_training_environment(args)
+        agent, logger, visualizer, performance_monitor, env, resume_context = setup_enhanced_training_environment(args)
         
         # Log enhanced training start
         logger.log_text("🚀 Enhanced DQN training started")
@@ -413,7 +432,15 @@ def main():
         
         # Initialize training variables
         total_episodes = args.episodes
-        total_steps = 0
+        total_steps = resume_context.get('total_steps', 0)
+        start_episode = resume_context.get('start_episode', 1)
+
+        if start_episode > total_episodes:
+            logger.log_text(
+                f"⚠️ Resume episode {start_episode} exceeds requested total episodes {total_episodes}. Nothing to do."
+            )
+            return
+
         best_eval_reward = float('-inf')
         start_time = time.time()
         last_performance_report = 0
@@ -428,11 +455,14 @@ def main():
             except Exception as e:
                 logger.log_text(f"⚠️ Hyperparameter tuning initialization failed: {str(e)}")
         
-        print(f"\n🎯 Starting training for {total_episodes} episodes...")
+        print(
+            f"\n🎯 Starting training from episode {start_episode} to {total_episodes} "
+            f"(restored total_steps={total_steps})..."
+        )
         print("=" * 60)
         
         # Main enhanced training loop
-        for episode in range(1, total_episodes + 1):
+        for episode in range(start_episode, total_episodes + 1):
             try:
                 # Enhanced resource monitoring
                 if episode % 10 == 0:
@@ -453,7 +483,14 @@ def main():
                                     logger.experiment_name, 
                                     f"emergency_save_{episode}.pt"
                                 )
-                                agent.save_model(emergency_path, include_memory=False)
+                                agent.save_model(
+                                    emergency_path,
+                                    include_memory=False,
+                                    metadata={
+                                        'checkpoint_episode': episode,
+                                        'checkpoint_total_steps': total_steps
+                                    }
+                                )
                                 emergency_saves += 1
                                 logger.log_text(f"💾 Emergency save #{emergency_saves}: {emergency_path}")
                             except Exception as e:
@@ -485,7 +522,14 @@ def main():
                                 logger.experiment_name, 
                                 f"best_model_episode_{episode}.pt"
                             )
-                            agent.save_model(best_model_path, include_memory=False)
+                            agent.save_model(
+                                best_model_path,
+                                include_memory=False,
+                                metadata={
+                                    'checkpoint_episode': episode,
+                                    'checkpoint_total_steps': total_steps
+                                }
+                            )
                             
                     except Exception as e:
                         logger.log_text(f"⚠️ Evaluation failed at episode {episode}: {str(e)}")
@@ -511,6 +555,7 @@ def main():
                             include_memory=False,
                             metadata={
                                 'checkpoint_episode': episode,
+                                'checkpoint_total_steps': total_steps,
                                 'training_diagnostics': diagnostics,
                                 'performance_stats': performance_monitor.get_current_stats() if performance_monitor else {}
                             }
